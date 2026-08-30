@@ -1066,6 +1066,48 @@
     }
     seedDatabase();
 
+    // ===================== DEMO ACCOUNT REPAIR / MIGRATION =====================
+    // Important: older localStorage data may already contain some users. The old
+    // seedDatabase() returned early when ANY user existed, which could leave the
+    // Student/Accountant demo accounts missing or using an old institution domain.
+    // Always repair the demo accounts on startup without touching real users.
+    function ensureDemoAccounts() {
+      const settings = DS.getSettings();
+      const domain = (settings.schoolDomain || 'vidhyadham.edu').trim().toLowerCase();
+      const users = DS.getUsers();
+      const demo = [
+        { id:'u3', name:'Aarav Shah', email:`aaravshah@${domain}`, role:'STUDENT', password:'GR2023001', phone:'+91-9876543212', joined:'2023-08-01' },
+        { id:'u4', name:'Riya Patel', email:`riyapatel@${domain}`, role:'STUDENT', password:'GR2023002', phone:'+91-9876543213', joined:'2023-08-01' },
+        { id:'u13', name:'Accountant Rajesh', email:'accountant@edutrack.edu', role:'ACCOUNTANT', password:'password', phone:'+91-9876543222', joined:'2021-03-10' }
+      ];
+      demo.forEach(d => {
+        const byId = users.find(u => u.id === d.id);
+        const byRole = users.find(u => u.role === d.role && (d.role === 'ACCOUNTANT' || u.id === d.id));
+        if (!byId && !byRole) {
+          DS.addUser({ avatar:null, ...d });
+        } else {
+          const existing = byId || byRole;
+          // Keep existing profile information, but repair the demo credentials.
+          DS.updateUser(existing.id, {
+            email:d.email, role:d.role, password:d.password,
+            name:existing.name || d.name, phone:existing.phone || d.phone, joined:existing.joined || d.joined
+          });
+        }
+      });
+
+      // Ensure the linked student/accountant records exist for demo mode.
+      if (!DS.getStudentByUserId('u3')) {
+        const existing = DS.getStudentByGR('GR2023001');
+        if (existing) DS.updateStudent(existing.id, { userId:'u3' });
+      }
+      const accountants = DS.getCollection('accountants');
+      if (!accountants.some(a => a.userId === 'u13')) {
+        accountants.push({ id:'acc1', userId:'u13', name:'Accountant Rajesh', department:'Finance', designation:'Senior Accountant' });
+        DS.setCollection('accountants', accountants);
+      }
+    }
+    ensureDemoAccounts();
+
     // ===================== TOAST & NOTIFICATIONS =====================
     function showToast(message, type='info', title=null) {
       const container = document.getElementById('toast-container');
@@ -1214,8 +1256,9 @@
       const [role, setRole] = useState('STUDENT');
       const [error, setError] = useState('');
       const [loading, setLoading] = useState(false);
+      const loginDomain = (DS.getSettings().schoolDomain || 'vidhyadham.edu').trim().toLowerCase();
       const demoAccounts = [
-        { label:'Student', role:'STUDENT', email:'aaravshah@vidhyadham.edu', desc:'Student Portal', pass:'GR2023001' },
+        { label:'Student', role:'STUDENT', email:`aaravshah@${loginDomain}`, desc:'Student Portal', pass:'GR2023001' },
         { label:'Teacher', role:'TEACHER', email:'priya@edutrack.edu', desc:'Faculty Dashboard', pass:'password' },
         { label:'Admin', role:'ADMIN', email:'admin@edutrack.edu', desc:'System Admin', pass:'password' },
         { label:'Accountant', role:'ACCOUNTANT', email:'accountant@edutrack.edu', desc:'Finance Panel', pass:'password' }
