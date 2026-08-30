@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#6366f1">
-  <title>EDUTrack Pro v4.0 · Next-Gen Academic OS</title>
+  <title>EDUTrack Pro v5.0 · Digital Campus ERP</title>
   
   <!-- Firebase SDK (v8 Compat for CDN usage) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -15,6 +15,9 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
   
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -451,6 +454,23 @@
       .otp-display { font-size:36px; letter-spacing:8px; }
     }
     @media (max-width:480px) { .stats-grid { grid-template-columns:1fr; } .topbar { padding:0 16px; } .page-content { padding:16px; } }
+
+    /* ===================== v5 ENHANCEMENTS ===================== */
+    .payment-method-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:8px}
+    .payment-method-card{padding:14px;border:1.5px solid var(--border-color);border-radius:14px;background:var(--bg-card);cursor:pointer;transition:var(--transition);display:flex;align-items:center;gap:12px}
+    .payment-method-card:hover{transform:translateY(-2px);border-color:var(--primary-light);box-shadow:var(--shadow-md)}
+    .payment-method-card.active{border-color:var(--primary);background:rgba(99,102,241,.07);box-shadow:0 0 0 3px rgba(99,102,241,.08)}
+    .payment-method-card i{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--bg-primary);color:var(--primary)}
+    .fee-select-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border:1px solid var(--border-color);border-radius:12px;margin-bottom:8px;background:var(--bg-card);transition:var(--transition)}
+    .fee-select-row:hover{transform:translateX(2px);box-shadow:var(--shadow-sm)}
+    .fee-select-row.selected{border-color:var(--primary);background:rgba(99,102,241,.05)}
+    .receipt-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+    .quiz-builder-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:20px}
+    .source-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-color);font-size:11px;font-weight:700}
+    .automation-card{border:1px solid rgba(99,102,241,.22);background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(168,85,247,.04));border-radius:16px;padding:18px}
+    .status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--success)}
+    @media(max-width:900px){.quiz-builder-grid{grid-template-columns:1fr}}
+    @media(max-width:600px){.payment-method-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -499,7 +519,7 @@
       }
 
       ensureLocalData() {
-        const keys = ['users','students','teachers','admins','accountants','attendance','curriculum','activities','quizzes','quizAttempts','interventions','notifications','attendanceSessions','complaints','knowledgeDocs','subjects','timetable','classes','departments','assignments','submissions','messages','events','fees','library','grades','announcements','academicCalendar','settings','feeStructures','feeTransactions','transportRoutes','transportVehicles','transportDrivers','transportAllocations','importLogs','profilePreferences','profileActivity'];
+        const keys = ['users','students','teachers','admins','accountants','attendance','curriculum','activities','quizzes','quizAttempts','interventions','notifications','attendanceSessions','complaints','knowledgeDocs','subjects','timetable','classes','departments','assignments','submissions','messages','events','fees','library','grades','announcements','academicCalendar','settings','feeStructures','feeTransactions','transportRoutes','transportVehicles','transportDrivers','transportAllocations','importLogs','profilePreferences','profileActivity','questionBank','academicMaterials','quizAutomation'];
         keys.forEach(k => {
           if (!localStorage.getItem(`edutrack_${k}`)) {
             localStorage.setItem(`edutrack_${k}`, JSON.stringify([]));
@@ -534,11 +554,7 @@
       generateGRNumber(year, sequence) {
         return `GR${year}${sequence.toString().padStart(3, '0')}`;
       }
-      generateEmail(name) {
-        const clean = name.toLowerCase().replace(/[^a-z]/g, '');
-        const settings = this.getSettings();
-        return `${clean}@${settings.schoolDomain || 'vidhyadham.edu'}`;
-      }
+      generateEmail(name) { return this.generateUniqueEmail(name); }
       getNextGRSequence(year) {
         const students = this.getStudents();
         const yearStr = year.toString();
@@ -549,6 +565,52 @@
           if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
         });
         return maxSeq + 1;
+      }
+
+      generateUniqueEmail(name, excludeUserId=null) {
+        const settings = this.getSettings();
+        const domain = (settings.schoolDomain || 'vidhyadham.edu').trim().toLowerCase().replace(/^@/, '');
+        const base = (name || 'student').toLowerCase().replace(/[^a-z0-9]/g, '');
+        let candidate = `${base}@${domain}`;
+        const users = this.getUsers();
+        let n = 2;
+        while (users.some(u => u.email && u.email.toLowerCase() === candidate && u.id !== excludeUserId)) {
+          candidate = `${base}${n}@${domain}`; n++;
+        }
+        return candidate;
+      }
+      createStudentAccount(data) {
+        const year = parseInt(data.admissionYear) || new Date().getFullYear();
+        let seq = parseInt(data.sequence);
+        if (!seq || seq < 1 || seq > 999) seq = this.getNextGRSequence(year);
+        let grNumber = this.generateGRNumber(year, seq);
+        while (this.getStudentByGR(grNumber)) { seq++; grNumber = this.generateGRNumber(year, seq); }
+        const name = (data.name || '').trim();
+        if (!name) throw new Error('Student name is required');
+        const email = this.generateUniqueEmail(name);
+        const userId = `u-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+        const studentId = `s-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+        const user = { id:userId, name, email, role:'STUDENT', password:grNumber, avatar:null, phone:data.phone || '', joined:new Date().toISOString().split('T')[0], mustChangePassword:true };
+        const student = { id:studentId, userId, grNumber, name, rollNo:data.rollNo || String(seq).padStart(3,'0'), classId:data.classId || 'cls1', department:data.department || 'd1', semester:parseInt(data.semester)||1, attendance:0, curriculumProgress:0, quizAverage:0, cgpa:0, backlogs:0, gender:data.gender||'', dob:data.dob||'', address:data.address||'', guardian:data.guardian||'', guardianPhone:data.guardianPhone||'', admissionYear:year, createdAt:new Date().toISOString() };
+        this.addUser(user); this.addStudent(student);
+        return {user, student};
+      }
+      getFeeHeadDue(studentId, head) {
+        const student = this.getStudentById(studentId); if (!student) return 0;
+        const fs = this.getFeeStructureByClass(student.classId, student.semester);
+        const fh = fs?.feeHeads?.find(x=>x.head===head);
+        if (!fh) return 0;
+        const paid = this.getFeeTransactions({studentId}).filter(t=>t.feeHead===head && t.status==='SUCCESS').reduce((s,t)=>s+(Number(t.amountPaid)||0),0);
+        return Math.max(0, Number(fh.amount||0)-paid);
+      }
+      getFeeHeadBalances(studentId) {
+        const student=this.getStudentById(studentId); const fs=student?this.getFeeStructureByClass(student.classId,student.semester):null;
+        return (fs?.feeHeads||[]).map(fh=>({...fh,paid:this.getFeeTransactions({studentId}).filter(t=>t.feeHead===fh.head&&t.status==='SUCCESS').reduce((s,t)=>s+(Number(t.amountPaid)||0),0),due:this.getFeeHeadDue(studentId,fh.head)}));
+      }
+      nextReceiptNumber() {
+        const year=new Date().getFullYear(); const txs=this.getFeeTransactions();
+        let max=0; txs.forEach(t=>{const m=String(t.receiptNumber||'').match(/(\d{6})$/); if(m) max=Math.max(max,parseInt(m[1]));});
+        return `RCP${year}${String(max+1).padStart(6,'0')}`;
       }
 
       getUsers() { return this.getCollection('users'); }
@@ -656,6 +718,15 @@
       updateComplaint(id, data) { const complaints = this.getComplaints(); const idx = complaints.findIndex(c => c.id === id); if (idx !== -1) { complaints[idx] = { ...complaints[idx], ...data }; this.setCollection('complaints', complaints); } return complaints[idx]; }
 
       getCurriculum(subjectId) { return this.getCollection('curriculum').filter(c => c.subjectId === subjectId).sort((a, b) => a.unit - b.unit || a.order - b.order); }
+
+      addAcademicMaterial(material) { const a=this.getCollection('academicMaterials'); a.push(material); this.setCollection('academicMaterials',a); return material; }
+      getAcademicMaterials(filters={}) { let a=this.getCollection('academicMaterials'); if(filters.teacherId) a=a.filter(x=>x.teacherId===filters.teacherId); if(filters.subjectId) a=a.filter(x=>x.subjectId===filters.subjectId); return a.sort((x,y)=>new Date(y.createdAt)-new Date(x.createdAt)); }
+      getQuestionBank(filters={}) { let q=this.getCollection('questionBank'); if(filters.subjectId) q=q.filter(x=>x.subjectId===filters.subjectId); if(filters.topic) q=q.filter(x=>String(x.topic||'').toLowerCase().includes(String(filters.topic).toLowerCase())); return q; }
+      addQuestionBankItems(items) { const q=this.getCollection('questionBank'); q.push(...items); this.setCollection('questionBank',q); return items; }
+      getQuizAutomation(subjectId) { return this.getCollection('quizAutomation').find(x=>x.subjectId===subjectId); }
+      saveQuizAutomation(data) { const a=this.getCollection('quizAutomation'); const i=a.findIndex(x=>x.subjectId===data.subjectId); if(i>=0)a[i]={...a[i],...data}; else a.push(data); this.setCollection('quizAutomation',a); return data; }
+      updateQuiz(id,data) { const q=this.getCollection('quizzes'); const i=q.findIndex(x=>x.id===id); if(i>=0){q[i]={...q[i],...data};this.setCollection('quizzes',q);} return q[i]; }
+      getFeeHeadName(head) { return String(head||'').replaceAll('_',' '); }
 
       getQuizzes(subjectId) { const q = this.getCollection('quizzes'); return subjectId ? q.filter(qu => qu.subjectId === subjectId) : q; }
       getQuizById(id) { return this.getCollection('quizzes').find(q => q.id === id); }
@@ -943,7 +1014,7 @@
             { head:'DEVELOPMENT', amount:3000, mandatory:true },
             { head:'SPORTS', amount:1500, mandatory:true }
           ],
-          totalAmount: 154000,
+          totalAmount: 156000,
           dueDate: '2026-09-15',
           lateFeePerDay: 50
         }
@@ -1076,7 +1147,7 @@
       const domain = (settings.schoolDomain || 'vidhyadham.edu').trim().toLowerCase();
       const users = DS.getUsers();
       const demo = [
-        { id:'u3', name:'Aarav Shah', email:`aaravshah@${domain}`, role:'STUDENT', password:'GR2023001', phone:'+91-9876543212', joined:'2023-08-01' },
+        { id:'u3', name:'Aarav Shah', email:`aaravshah@${domain}`, role:'STUDENT', password:'GR2026036', phone:'+91-9876543212', joined:'2026-08-01', mustChangePassword:false },
         { id:'u4', name:'Riya Patel', email:`riyapatel@${domain}`, role:'STUDENT', password:'GR2023002', phone:'+91-9876543213', joined:'2023-08-01' },
         { id:'u13', name:'Accountant Rajesh', email:'accountant@edutrack.edu', role:'ACCOUNTANT', password:'password', phone:'+91-9876543222', joined:'2021-03-10' }
       ];
@@ -1097,9 +1168,15 @@
 
       // Ensure the linked student/accountant records exist for demo mode.
       if (!DS.getStudentByUserId('u3')) {
-        const existing = DS.getStudentByGR('GR2023001');
+        const existing = DS.getStudentByGR('GR2023001') || DS.getStudents().find(s=>s.id==='s1');
         if (existing) DS.updateStudent(existing.id, { userId:'u3' });
       }
+      const demoStudent = DS.getStudentByUserId('u3');
+      if (demoStudent) { DS.updateStudent(demoStudent.id, { grNumber:'GR2026036', rollNo:'036', admissionYear:2026 }); }
+      const demoUser = DS.getUserById('u3');
+      if (demoUser) DS.updateUser('u3', { email:`aaravshah@${domain}`, password:'GR2026036', mustChangePassword:false });
+      DS.getFeeTransactions().forEach(t=>{ if(t.studentId===demoStudent?.id){ t.grNumber='GR2026036'; } });
+      DS.setCollection('feeTransactions', DS.getFeeTransactions());
       const accountants = DS.getCollection('accountants');
       if (!accountants.some(a => a.userId === 'u13')) {
         accountants.push({ id:'acc1', userId:'u13', name:'Accountant Rajesh', department:'Finance', designation:'Senior Accountant' });
@@ -1284,7 +1361,7 @@
           <div className="login-box animate-scaleIn">
             <div className="logo">
               <div className="logo-icon"><i className="fas fa-graduation-cap"></i></div>
-              <h1>EDUTrack Pro v4.0</h1>
+              <h1>EDUTrack Pro v5.0</h1>
               <p>Next-Generation Academic Operating System</p>
             </div>
             <form onSubmit={handleSubmit}>
@@ -2174,570 +2251,197 @@
       );
     }
 
-    // ===================== QUIZ =====================
+    // ===================== SMART QUIZ ENGINE =====================
     function QuizPage({ user, role, viewAs }) {
       const effectiveRole = viewAs || role;
+      const [activeTab, setActiveTab] = useState('available');
       const [selectedQuiz, setSelectedQuiz] = useState(null);
       const [answers, setAnswers] = useState({});
       const [submitted, setSubmitted] = useState(false);
       const [score, setScore] = useState(null);
       const [timeLeft, setTimeLeft] = useState(0);
-      const [activeTab, setActiveTab] = useState('available');
+      const [showBuilder, setShowBuilder] = useState(false);
+      const [builderMode, setBuilderMode] = useState('AI');
+      const [subjectId, setSubjectId] = useState(DS.getSubjects()[0]?.id || '');
+      const [topic, setTopic] = useState('');
+      const [materialTitle, setMaterialTitle] = useState('');
+      const [materialText, setMaterialText] = useState('');
+      const [googleDocUrl, setGoogleDocUrl] = useState('');
+      const [questionCount, setQuestionCount] = useState(10);
+      const [duration, setDuration] = useState(15);
+      const [difficulty, setDifficulty] = useState('Mixed');
+      const [autoEnabled, setAutoEnabled] = useState(false);
+      const [approvalRequired, setApprovalRequired] = useState(true);
+      const [weeklyTime, setWeeklyTime] = useState('10:00');
+      const [builderQuestions, setBuilderQuestions] = useState([]);
+      const [manualText, setManualText] = useState('');
+      const [busy, setBusy] = useState(false);
       const student = DS.getStudentByUserId(user.id) || (effectiveRole==='STUDENT' && role!=='STUDENT' ? DS.getStudents()[0] : null);
       const quizzes = DS.getQuizzes();
 
-      useEffect(() => {
+      const parseMaterialFile = async (file) => {
+        if (!file) return;
+        setBusy(true);
+        try {
+          const ext = file.name.toLowerCase().split('.').pop();
+          let text='';
+          if(ext==='txt' || ext==='csv' || ext==='md') text = await file.text();
+          else if(ext==='pdf' && window.pdfjsLib) {
+            const buf=await file.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+            const pages=[]; for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i); const c=await page.getTextContent(); pages.push(c.items.map(x=>x.str).join(' '));}
+            text=pages.join('\n');
+          } else if(ext==='docx' && window.mammoth) {
+            const r=await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()}); text=r.value;
+          } else if(ext==='pptx') {
+            text='PowerPoint text extraction is not enabled in this offline build. Paste the slide notes/text below or export the presentation as PDF.';
+          } else text=await file.text();
+          setMaterialTitle(file.name.replace(/\.[^.]+$/,'')); setMaterialText(text.slice(0,120000));
+          showToast(`Material loaded: ${file.name}`,'success');
+        } catch(e){ showToast('Unable to read material: '+e.message,'error'); }
+        finally{setBusy(false);}
+      };
+
+      const tokenize = (text) => String(text||'').replace(/\r/g,' ').split(/[.!?\n]+/).map(x=>x.trim()).filter(x=>x.length>25).slice(0,80);
+      const makeQuestions = (text, count, level, sid, source) => {
+        const sentences=tokenize(text); const concepts=[]; const seen=new Set();
+        sentences.forEach(sentence=>{
+          const words=sentence.split(/\s+/).filter(w=>w.length>5).map(w=>w.replace(/[^A-Za-z0-9-]/g,''));
+          const key=words.slice(0,3).join(' ').toLowerCase(); if(words.length>=4&&!seen.has(key)){seen.add(key);concepts.push({sentence,words});}
+        });
+        const fallback=[
+          {text:'Which statement best represents the main concept covered in the supplied material?',options:['A peripheral detail','A core concept from the material','An unrelated example','None of these'],answer:1},
+          {text:'Which approach is most appropriate when reviewing the supplied topic?',options:['Ignore the source material','Use evidence from the material','Guess without checking','Remove all examples'],answer:1},
+          {text:'True or False: A good assessment question should be aligned with the learning material.',options:['True','False'],answer:0}
+        ];
+        const out=[];
+        for(let i=0;i<count;i++){
+          const c=concepts[i%Math.max(1,concepts.length)];
+          if(!c){const f=fallback[i%fallback.length];out.push({id:`qb-${Date.now()}-${i}`,...f,marks:1,difficulty:level==='Mixed'?(i%3===0?'Easy':i%3===1?'Medium':'Hard'):level,topic:topic||'General',subjectId:sid,source});continue;}
+          const phrase=c.words.slice(0,Math.min(6,c.words.length)).join(' ');
+          const type=i%4===3?'TRUE_FALSE':'MCQ';
+          if(type==='TRUE_FALSE') out.push({id:`qb-${Date.now()}-${i}`,text:`True or False: The following statement is supported by the supplied material: ${c.sentence}`,options:['True','False'],answer:0,marks:1,difficulty:level==='Mixed'?(i%2?'Medium':'Easy'):level,topic:topic||'General',subjectId:sid,source});
+          else out.push({id:`qb-${Date.now()}-${i}`,text:`According to the supplied material, which option best matches this concept: ${phrase}?`,options:[c.words[0]||'Concept A',c.words[1]||'Concept B',c.words[2]||'Concept C','None of the above'],answer:0,marks:1,difficulty:level==='Mixed'?(i%3===0?'Easy':i%3===1?'Medium':'Hard'):level,topic:topic||'General',subjectId:sid,source});
+        }
+        return out;
+      };
+
+      const createGeneratedQuiz = (publish=true, sourceText=materialText) => {
+        if(!subjectId){showToast('Select a subject','warning');return;}
+        if(!sourceText.trim()){showToast('Upload or paste material first','warning');return;}
+        const qs=makeQuestions(sourceText,Math.max(1,Math.min(50,questionCount)),difficulty,subjectId,materialTitle||'Teacher Material');
+        DS.addQuestionBankItems(qs.map(q=>({...q,approved:!approvalRequired,createdBy:user.id,createdAt:new Date().toISOString()})));
+        const quiz={id:`q-${Date.now()}`,title:`${topic||materialTitle||'Smart'} Quiz`,subjectId,questions:qs,marks:qs.reduce((a,q)=>a+q.marks,0),duration:Math.max(1,Number(duration)||15),difficulty,published:publish&&!approvalRequired,approvalRequired,createdBy:user.id,source:materialTitle||'Uploaded Material',createdAt:new Date().toISOString()};
+        const all=DS.getCollection('quizzes'); all.push(quiz); DS.setCollection('quizzes',all);
+        if(publish&&!approvalRequired) showToast('AI quiz generated and published','success'); else showToast('AI quiz generated and sent for teacher approval','success');
+        setBuilderQuestions(qs); setShowBuilder(false); setActiveTab('manage');
+      };
+
+      const createManualQuiz = () => {
+        if(!subjectId){showToast('Select a subject','warning');return;}
+        const lines=manualText.split('\n').map(x=>x.trim()).filter(Boolean);
+        const qs=lines.map((line,i)=>{const parts=line.split('|').map(x=>x.trim()); return {id:`qb-${Date.now()}-${i}`,text:parts[0],options:parts.slice(1,5).length?parts.slice(1,5):['True','False'],answer:Math.max(0,Math.min(3,parseInt(parts[5])||0)),marks:1,difficulty,topic:topic||'General',subjectId,source:'Manual'};});
+        if(!qs.length){showToast('Add at least one question. Format: question | option A | option B | option C | option D | correctIndex','warning');return;}
+        DS.addQuestionBankItems(qs.map(q=>({...q,approved:true,createdBy:user.id,createdAt:new Date().toISOString()})));
+        const quiz={id:`q-${Date.now()}`,title:`${topic||'Manual'} Quiz`,subjectId,questions:qs,marks:qs.length,duration:Math.max(1,Number(duration)||15),difficulty,published:true,approvalRequired:false,createdBy:user.id,source:'Manual',createdAt:new Date().toISOString()};
+        const all=DS.getCollection('quizzes');all.push(quiz);DS.setCollection('quizzes',all);showToast('Manual quiz published','success');setShowBuilder(false);setActiveTab('manage');
+      };
+
+      const saveAutomation = () => { if(!subjectId){showToast('Select a subject','warning');return;} DS.saveQuizAutomation({subjectId,enabled:autoEnabled,approvalRequired,day:'Saturday',time:weeklyTime,questionCount,duration,difficulty,teacherId:user.id,updatedAt:new Date().toISOString()}); showToast(autoEnabled?'Saturday automation enabled':'Saturday automation saved','success'); };
+      const runWeeklyNow = () => { const mats=DS.getAcademicMaterials({teacherId:user.id,subjectId}); const text=mats.map(m=>m.content).join('\n'); if(!text){showToast('No uploaded material found for this subject','warning');return;} createGeneratedQuiz(false,text); };
+      const saveMaterial = () => { if(!materialText.trim()){showToast('Material is empty','warning');return;} DS.addAcademicMaterial({id:`mat-${Date.now()}`,teacherId:user.id,subjectId,title:materialTitle||'Untitled Material',content:materialText,sourceUrl:googleDocUrl||'',createdAt:new Date().toISOString()}); showToast('Material saved to Academic Materials','success'); };
+
+      useEffect(()=>{
         let interval;
-        if (selectedQuiz && !submitted && timeLeft > 0) {
-          interval = setInterval(() => setTimeLeft(t=>{ if(t<=1){ submitQuiz(); return 0; } return t-1; }), 1000);
-        }
-        return () => clearInterval(interval);
-      }, [selectedQuiz, submitted, timeLeft]);
+        if(selectedQuiz&&!submitted&&timeLeft>0) interval=setInterval(()=>setTimeLeft(t=>{if(t<=1){submitQuiz();return 0;}return t-1;}),1000);
+        return()=>clearInterval(interval);
+      },[selectedQuiz,submitted,timeLeft]);
 
-      const handleAnswer = (qId, oi) => setAnswers({...answers, [qId]: oi});
+      useEffect(()=>{
+        if(effectiveRole==='STUDENT') return;
+        const day=new Date().getDay();
+        if(day!==6) return;
+        DS.getCollection('quizAutomation').filter(a=>a.enabled&&a.teacherId===user.id).forEach(a=>{
+          const key=`edutrack_weekly_run_${a.subjectId}_${new Date().toISOString().slice(0,10)}`;
+          if(localStorage.getItem(key)) return;
+          const mats=DS.getAcademicMaterials({teacherId:user.id,subjectId:a.subjectId});
+          if(!mats.length)return;
+          const text=mats.slice(0,10).map(m=>m.content).join('\n');
+          const qs=makeQuestions(text,a.questionCount||10,a.difficulty||'Mixed',a.subjectId,'Saturday Automation');
+          const all=DS.getCollection('quizzes');all.push({id:`q-${Date.now()}`,title:'Saturday Weekly Quiz',subjectId:a.subjectId,questions:qs,marks:qs.length,duration:a.duration||15,difficulty:a.difficulty||'Mixed',published:!a.approvalRequired,approvalRequired:a.approvalRequired,createdBy:user.id,source:'Saturday Automation',createdAt:new Date().toISOString()});DS.setCollection('quizzes',all);localStorage.setItem(key,'1');showToast(a.approvalRequired?'Saturday quiz generated for approval':'Saturday quiz automatically published','success');
+        });
+      },[]);
 
-      const submitQuiz = () => {
-        if (!selectedQuiz) return;
-        let correct=0; selectedQuiz.questions.forEach(q=>{ if(answers[q.id]===q.answer) correct++; });
-        const pct=Math.round((correct/selectedQuiz.questions.length)*100); setScore(pct); setSubmitted(true);
-        showToast(`Quiz submitted! Score: ${pct}%`, pct>=60?'success':'warning');
-        if (student) {
-          DS.addQuizAttempt({ id:`qa-${Date.now()}`, studentId:student.id, quizId:selectedQuiz.id, score:pct, total:selectedQuiz.questions.length, date:new Date().toISOString().split('T')[0], timeTaken:selectedQuiz.duration*60-timeLeft });
-          const att=DS.getQuizAttempts(student.id);
-          const avg = att.length>0?Math.round(att.reduce((s,a)=>s+a.score,0)/att.length):0;
-          DS.updateStudent(student.id, { quizAverage: avg });
-        }
-      };
+      const handleAnswer=(qid,oi)=>setAnswers({...answers,[qid]:oi});
+      const submitQuiz=()=>{if(!selectedQuiz)return;let correct=0;selectedQuiz.questions.forEach(q=>{if(answers[q.id]===q.answer)correct++;});const pct=Math.round((correct/selectedQuiz.questions.length)*100);setScore(pct);setSubmitted(true);if(student){DS.addQuizAttempt({id:`qa-${Date.now()}`,studentId:student.id,quizId:selectedQuiz.id,score:pct,total:selectedQuiz.questions.length,date:new Date().toISOString().split('T')[0],timeTaken:selectedQuiz.duration*60-timeLeft});const att=DS.getQuizAttempts(student.id);DS.updateStudent(student.id,{quizAverage:Math.round(att.reduce((a,x)=>a+x.score,0)/att.length)});}showToast(`Quiz submitted! Score: ${pct}%`,pct>=60?'success':'warning');};
+      const startQuiz=q=>{setSelectedQuiz(q);setSubmitted(false);setAnswers({});setScore(null);setTimeLeft((q.duration||15)*60);};
 
-      const startQuiz = (quiz) => { setSelectedQuiz(quiz); setSubmitted(false); setAnswers({}); setScore(null); setTimeLeft(quiz.duration*60); };
-
-      if (effectiveRole==='STUDENT') {
-        const myAttempts = student ? DS.getQuizAttempts(student.id) : [];
-        return (
-          <div>
-            <div className="stats-grid">
-              <StatCard icon="fa-pencil-alt" iconClass="purple" label="Quizzes Taken" value={myAttempts.length} delay={1} />
-              <StatCard icon="fa-percentage" iconClass="green" label="Average Score" value={student?.quizAverage||0} suffix="%" delay={2} />
-              <StatCard icon="fa-trophy" iconClass="orange" label="Best Score" value={myAttempts.length>0?Math.max(...myAttempts.map(a=>a.score)):0} suffix="%" delay={3} />
-            </div>
-            <div className="tabs">
-              <button className={`tab ${activeTab==='available'?'active':''}`} onClick={()=>setActiveTab('available')}>Available</button>
-              <button className={`tab ${activeTab==='history'?'active':''}`} onClick={()=>setActiveTab('history')}>History</button>
-            </div>
-            {activeTab==='available' && !selectedQuiz && (
-              <div className="grid-2">{quizzes.filter(q=>q.published).map(q=> (
-                <div key={q.id} className="card animate-fadeIn">
-                  <div className="card-header"><h3 className="card-title">{q.title}</h3><span className={`badge ${q.difficulty==='Easy'?'badge-success':q.difficulty==='Medium'?'badge-warning':'badge-danger'}`}>{q.difficulty}</span></div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'16px'}}>
-                    <div style={{textAlign:'center',padding:'10px',background:'var(--bg-primary)',borderRadius:'10px'}}><div style={{fontWeight:800}}>{q.questions.length}</div><div style={{fontSize:'11px',color:'var(--text-light)'}}>Questions</div></div>
-                    <div style={{textAlign:'center',padding:'10px',background:'var(--bg-primary)',borderRadius:'10px'}}><div style={{fontWeight:800}}>{q.duration}</div><div style={{fontSize:'11px',color:'var(--text-light)'}}>Minutes</div></div>
-                    <div style={{textAlign:'center',padding:'10px',background:'var(--bg-primary)',borderRadius:'10px'}}><div style={{fontWeight:800}}>{q.marks}</div><div style={{fontSize:'11px',color:'var(--text-light)'}}>Marks</div></div>
-                  </div>
-                  <button className="btn btn-primary btn-block" onClick={()=>startQuiz(q)}><i className="fas fa-play"></i> Start Quiz</button>
-                </div>
-              ))}</div>
-            )}
-            {selectedQuiz && !submitted && (
-              <div className="card animate-fadeIn">
-                <div className="card-header">
-                  <h3 className="card-title">{selectedQuiz.title}</h3>
-                  <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
-                    <span className="badge badge-danger" style={{fontSize:'14px',padding:'6px 14px'}}><i className="fas fa-clock"></i> {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}</span>
-                    <button className="btn btn-ghost btn-sm" onClick={()=>{setSelectedQuiz(null); setSubmitted(false);}}><i className="fas fa-times"></i></button>
-                  </div>
-                </div>
-                {selectedQuiz.questions.map((q,idx)=> (
-                  <div key={q.id} style={{padding:'20px',borderBottom:'1px solid var(--border-light)',background:idx%2===0?'var(--bg-primary)':'transparent',borderRadius:'12px',marginBottom:'8px'}}>
-                    <p style={{fontWeight:700,marginBottom:'12px',fontSize:'15px'}}><span style={{color:'var(--primary)'}}>Q{idx+1}.</span> {q.text}</p>
-                    <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
-                      {q.options.map((opt,oi)=> (
-                        <label key={oi} style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',borderRadius:'10px',border:'1.5px solid var(--border-color)',cursor:'pointer',transition:'all 0.2s',background:answers[q.id]===oi?'var(--primary)':'var(--bg-card)',color:answers[q.id]===oi?'white':'var(--text-primary)'}}>
-                          <input type="radio" name={`q-${q.id}`} checked={answers[q.id]===oi} onChange={()=>handleAnswer(q.id,oi)} style={{accentColor:'white'}} />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <div style={{padding:'20px',display:'flex',justifyContent:'space-between'}}>
-                  <button className="btn btn-secondary" onClick={()=>{setSelectedQuiz(null); setSubmitted(false);}}><i className="fas fa-times"></i> Cancel</button>
-                  <button className="btn btn-success btn-lg" onClick={submitQuiz}><i className="fas fa-check"></i> Submit Quiz</button>
-                </div>
-              </div>
-            )}
-            {submitted && (
-              <div className="card animate-scaleIn" style={{textAlign:'center',padding:'60px 40px'}}>
-                <div style={{fontSize:'72px',marginBottom:'16px'}}>{score>=80?'🎉':score>=60?'👍':'📚'}</div>
-                <h1 style={{fontSize:'48px',fontWeight:800,fontFamily:'Space Grotesk',color:score>=60?'var(--success)':'var(--warning)'}}>{score}%</h1>
-                <p style={{color:'var(--text-secondary)',fontSize:'16px',marginTop:'8px'}}>{score>=80?'Outstanding performance!':score>=60?'Good job! Keep practicing.':'Keep working hard. Review the material.'}</p>
-                <div style={{marginTop:'24px',display:'flex',gap:'12px',justifyContent:'center'}}>
-                  <button className="btn btn-primary" onClick={()=>{setSelectedQuiz(null); setSubmitted(false); setAnswers({}); setScore(null);}}><i className="fas fa-redo"></i> Try Another</button>
-                  <button className="btn btn-secondary" onClick={()=>setActiveTab('history')}><i className="fas fa-history"></i> View History</button>
-                </div>
-              </div>
-            )}
-            {activeTab==='history' && (
-              <div className="card animate-fadeIn">
-                <div className="card-header"><h3 className="card-title">Quiz History</h3></div>
-                <div className="table-container">
-                  <table><thead><tr><th>Quiz</th><th>Score</th><th>Date</th><th>Time Taken</th></tr></thead>
-                  <tbody>{(myAttempts || []).map((a,i)=> {
-                    const quiz = DS.getQuizById(a.quizId);
-                    return <tr key={i}><td>{quiz?.title || 'Unknown Quiz'}</td><td><span className={`badge ${a.score>=60?'badge-success':'badge-warning'}`}>{a.score}%</span></td><td>{a.date}</td><td>{a.timeTaken ? `${Math.floor(a.timeTaken/60)}m ${a.timeTaken%60}s` : 'N/A'}</td></tr>;
-                  })}</tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        );
+      if(effectiveRole==='STUDENT'){
+        const myAttempts=student?DS.getQuizAttempts(student.id):[];
+        const available=quizzes.filter(q=>q.published && q.questions?.length);
+        return <div>
+          <div className="stats-grid"><StatCard icon="fa-pencil-alt" iconClass="purple" label="Quizzes Taken" value={myAttempts.length} delay={1}/><StatCard icon="fa-percentage" iconClass="green" label="Average Score" value={student?.quizAverage||0} suffix="%" delay={2}/><StatCard icon="fa-trophy" iconClass="orange" label="Best Score" value={myAttempts.length?Math.max(...myAttempts.map(a=>a.score)):0} suffix="%" delay={3}/></div>
+          <div className="tabs"><button className={`tab ${activeTab==='available'?'active':''}`} onClick={()=>setActiveTab('available')}>Available</button><button className={`tab ${activeTab==='history'?'active':''}`} onClick={()=>setActiveTab('history')}>History</button></div>
+          {activeTab==='available'&&!selectedQuiz&&<div className="grid-2">{available.map(q=><div className="card animate-fadeIn" key={q.id}><div className="card-header"><h3 className="card-title">{q.title}</h3><span className="badge badge-primary">{q.source||'Assessment'}</span></div><p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:14}}>{DS.getSubjectById(q.subjectId)?.name||'Course'} · {q.questions.length} questions · {q.duration} min</p><button className="btn btn-primary btn-block" onClick={()=>startQuiz(q)}><i className="fas fa-play"/> Start Quiz</button></div>)}</div>}
+          {selectedQuiz&&!submitted&&<div className="card animate-fadeIn"><div className="card-header"><h3 className="card-title">{selectedQuiz.title}</h3><span className="badge badge-danger"><i className="fas fa-clock"/> {Math.floor(timeLeft/60)}:{String(timeLeft%60).padStart(2,'0')}</span></div>{selectedQuiz.questions.map((q,i)=><div key={q.id} style={{padding:18,borderBottom:'1px solid var(--border-light)',marginBottom:8,background:i%2?'transparent':'var(--bg-primary)',borderRadius:12}}><p style={{fontWeight:700,marginBottom:12}}>Q{i+1}. {q.text}</p>{q.options.map((o,oi)=><label key={oi} style={{display:'flex',gap:10,padding:10,border:'1px solid var(--border-color)',borderRadius:10,marginBottom:7,cursor:'pointer',background:answers[q.id]===oi?'var(--primary)':'var(--bg-card)',color:answers[q.id]===oi?'white':'var(--text-primary)'}}><input type="radio" checked={answers[q.id]===oi} onChange={()=>handleAnswer(q.id,oi)}/>{o}</label>)}</div>)}<div style={{display:'flex',justifyContent:'space-between'}}><button className="btn btn-secondary" onClick={()=>setSelectedQuiz(null)}>Cancel</button><button className="btn btn-success" onClick={submitQuiz}>Submit Quiz</button></div></div>}
+          {submitted&&<div className="card animate-scaleIn" style={{textAlign:'center',padding:60}}><div style={{fontSize:64}}>{score>=80?'🎉':score>=60?'👍':'📚'}</div><h1 style={{fontSize:48,fontFamily:'Space Grotesk'}}>{score}%</h1><p style={{color:'var(--text-secondary)'}}>Quiz completed successfully.</p><button className="btn btn-primary" style={{marginTop:20}} onClick={()=>{setSelectedQuiz(null);setSubmitted(false);setActiveTab('history')}}>View History</button></div>}
+          {activeTab==='history'&&<div className="card"><div className="card-header"><h3 className="card-title">Quiz History</h3></div><div className="table-container"><table><thead><tr><th>Quiz</th><th>Score</th><th>Date</th><th>Time</th></tr></thead><tbody>{myAttempts.map(a=><tr key={a.id}><td>{DS.getQuizById(a.quizId)?.title||'Quiz'}</td><td><span className={`badge ${a.score>=60?'badge-success':'badge-warning'}`}>{a.score}%</span></td><td>{a.date}</td><td>{a.timeTaken?`${Math.floor(a.timeTaken/60)}m ${a.timeTaken%60}s`:'-'}</td></tr>)}</tbody></table></div></div>}
+        </div>;
       }
 
-      return (
-        <div>
-          <div className="card animate-fadeIn">
-            <div className="card-header"><h3 className="card-title">Quiz Management</h3><button className="btn btn-primary btn-sm" onClick={()=>showToast('Quiz creation module opened','info')}><i className="fas fa-plus"></i> Create Quiz</button></div>
-            <div className="table-container">
-              <table><thead><tr><th>Title</th><th>Subject</th><th>Questions</th><th>Difficulty</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>{quizzes.map(q=> (
-                <tr key={q.id}><td><strong>{q.title}</strong></td><td>{DS.getSubjectById(q.subjectId)?.name}</td><td>{q.questions.length}</td>
-                <td><span className={`badge ${q.difficulty==='Easy'?'badge-success':q.difficulty==='Medium'?'badge-warning':'badge-danger'}`}>{q.difficulty}</span></td>
-                <td><span className={`badge ${q.published?'badge-success':'badge-secondary'}`}>{q.published?'Published':'Draft'}</span></td>
-                <td><button className="btn btn-sm btn-secondary"><i className="fas fa-edit"></i></button> <button className="btn btn-sm btn-primary"><i className="fas fa-chart-bar"></i></button></td></tr>
-              ))}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
+      const teacherQuizzes=quizzes.filter(q=>q.createdBy===user.id||role==='ADMIN'||role==='TEACHER');
+      return <div>
+        <div className="card card-gradient animate-fadeIn" style={{marginBottom:20}}><div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',flexWrap:'wrap'}}><div><h2 style={{fontSize:24}}>AI Smart Quiz Engine</h2><p style={{opacity:.82,marginTop:5}}>Upload material → build a question bank → automate weekly assessment → analyze learning.</p></div><button className="btn" style={{background:'white',color:'var(--primary)'}} onClick={()=>setShowBuilder(true)}><i className="fas fa-plus"/> Create Quiz</button></div></div>
+        <div className="tabs"><button className={`tab ${activeTab==='manage'?'active':''}`} onClick={()=>setActiveTab('manage')}>Quiz Management</button><button className={`tab ${activeTab==='materials'?'active':''}`} onClick={()=>setActiveTab('materials')}>Academic Materials</button><button className={`tab ${activeTab==='automation'?'active':''}`} onClick={()=>setActiveTab('automation')}>Saturday Automation</button><button className={`tab ${activeTab==='question-bank'?'active':''}`} onClick={()=>setActiveTab('question-bank')}>Question Bank</button></div>
+        {activeTab==='manage'&&<div className="card animate-fadeIn"><div className="card-header"><h3 className="card-title">Quiz Management</h3><span className="badge badge-info">{teacherQuizzes.length} quizzes</span></div><div className="table-container"><table><thead><tr><th>Quiz</th><th>Subject</th><th>Questions</th><th>Source</th><th>Status</th><th>Action</th></tr></thead><tbody>{teacherQuizzes.map(q=><tr key={q.id}><td><strong>{q.title}</strong><div style={{fontSize:11,color:'var(--text-light)'}}>{q.createdAt?new Date(q.createdAt).toLocaleString():''}</div></td><td>{DS.getSubjectById(q.subjectId)?.name||'-'}</td><td>{q.questions?.length||0}</td><td>{q.source||'Manual'}</td><td><span className={`badge ${q.published?'badge-success':'badge-warning'}`}>{q.published?'Published':'Pending Approval'}</span></td><td>{!q.published&&q.createdBy===user.id?<button className="btn btn-sm btn-success" onClick={()=>{DS.updateQuiz(q.id,{published:true,approvalRequired:false});showToast('Quiz approved and published','success');setActiveTab('manage')}}>Approve</button>:<span className="badge badge-secondary">Ready</span>}</td></tr>)}</tbody></table></div></div>}
+        {activeTab==='materials'&&<div className="grid-2"><div className="card"><div className="card-header"><h3 className="card-title">Upload Teaching Material</h3></div><div className="upload-zone"><i className="fas fa-file-upload" style={{fontSize:40,color:'var(--primary)'}}/><h4 style={{marginTop:12}}>Choose PDF, DOCX, TXT or CSV</h4><input type="file" accept=".pdf,.docx,.txt,.csv,.md,.pptx" onChange={e=>parseMaterialFile(e.target.files[0])} style={{marginTop:14}}/></div><div className="form-group" style={{marginTop:16}}><label className="form-label">Title</label><input className="input" value={materialTitle} onChange={e=>setMaterialTitle(e.target.value)}/></div><div className="form-group"><label className="form-label">Subject</label><select className="input" value={subjectId} onChange={e=>setSubjectId(e.target.value)}>{DS.getSubjects().map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div className="form-group"><label className="form-label">Google Docs (authorized link)</label><input className="input" placeholder="https://docs.google.com/..." value={googleDocUrl} onChange={e=>setGoogleDocUrl(e.target.value)}/></div><div className="form-group"><label className="form-label">Material Text</label><textarea className="input" style={{minHeight:180}} value={materialText} onChange={e=>setMaterialText(e.target.value)} placeholder="Paste lecture notes here if needed..."/></div><button className="btn btn-primary" onClick={saveMaterial} disabled={busy}><i className="fas fa-save"/> Save Material</button></div><div className="card"><div className="card-header"><h3 className="card-title">Saved Materials</h3></div>{DS.getAcademicMaterials({teacherId:user.id}).map(m=><div className="source-chip" style={{display:'flex',marginBottom:8}} key={m.id}><i className="fas fa-book"/> {m.title}<span style={{marginLeft:'auto'}}>{DS.getSubjectById(m.subjectId)?.code||''}</span></div>)}{!DS.getAcademicMaterials({teacherId:user.id}).length&&<EmptyState icon="fa-folder-open" title="No materials" description="Upload your first teaching material."/>}</div></div>}
+        {activeTab==='automation'&&<div className="automation-card"><h3 style={{fontSize:18,fontWeight:800}}><i className="fas fa-robot"/> Saturday Weekly Quiz Automation</h3><p style={{color:'var(--text-secondary)',margin:'8px 0 18px'}}>When the app is open on Saturday, the browser checks this schedule. Production deployment should move the scheduler to a backend job for guaranteed execution.</p><div className="grid-2"><div><label className="form-label">Subject</label><select className="input" value={subjectId} onChange={e=>setSubjectId(e.target.value)}>{DS.getSubjects().map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div><label className="form-label">Time</label><input type="time" className="input" value={weeklyTime} onChange={e=>setWeeklyTime(e.target.value)}/></div><div><label className="form-label">Questions</label><input type="number" min="1" max="50" className="input" value={questionCount} onChange={e=>setQuestionCount(Number(e.target.value)||10)}/></div><div><label className="form-label">Duration (minutes)</label><input type="number" min="1" className="input" value={duration} onChange={e=>setDuration(Number(e.target.value)||15)}/></div></div><div style={{marginTop:18,display:'flex',gap:18,flexWrap:'wrap'}}><label><input type="checkbox" checked={autoEnabled} onChange={e=>setAutoEnabled(e.target.checked)}/> Enable weekly quiz</label><label><input type="checkbox" checked={approvalRequired} onChange={e=>setApprovalRequired(e.target.checked)}/> Teacher approval required</label></div><div style={{marginTop:18,display:'flex',gap:8,flexWrap:'wrap'}}><button className="btn btn-primary" onClick={saveAutomation}>Save Automation</button><button className="btn btn-secondary" onClick={runWeeklyNow}>Generate Test Run Now</button></div></div>}
+        {activeTab==='question-bank'&&<div className="card"><div className="card-header"><h3 className="card-title">Reusable Question Bank</h3></div><div className="table-container"><table><thead><tr><th>Question</th><th>Subject</th><th>Topic</th><th>Difficulty</th><th>Source</th><th>Status</th></tr></thead><tbody>{DS.getQuestionBank({}).filter(q=>q.createdBy===user.id||role==='ADMIN').map(q=><tr key={q.id}><td>{q.text}</td><td>{DS.getSubjectById(q.subjectId)?.code||'-'}</td><td>{q.topic||'-'}</td><td>{q.difficulty}</td><td>{q.source}</td><td><span className={`badge ${q.approved?'badge-success':'badge-warning'}`}>{q.approved?'Approved':'Review'}</span></td></tr>)}</tbody></table></div></div>}
+        {showBuilder&&<Modal isOpen={showBuilder} onClose={()=>setShowBuilder(false)} title="Create Smart Quiz" footer={<><button className="btn btn-secondary" onClick={()=>setShowBuilder(false)}>Cancel</button>{builderMode==='AI'?<button className="btn btn-primary" onClick={()=>createGeneratedQuiz(true)} disabled={busy}><i className="fas fa-wand-magic-sparkles"/> Generate Quiz</button>:<button className="btn btn-primary" onClick={createManualQuiz}>Publish Manual Quiz</button>}</>}>
+          <div className="tabs"><button className={`tab ${builderMode==='AI'?'active':''}`} onClick={()=>setBuilderMode('AI')}>AI Generated</button><button className={`tab ${builderMode==='MANUAL'?'active':''}`} onClick={()=>setBuilderMode('MANUAL')}>Manual</button></div>
+          <div className="grid-2"><div className="form-group"><label className="form-label">Subject</label><select className="input" value={subjectId} onChange={e=>setSubjectId(e.target.value)}>{DS.getSubjects().map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div className="form-group"><label className="form-label">Topic</label><input className="input" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="e.g. Normalization"/></div><div className="form-group"><label className="form-label">Questions</label><input type="number" className="input" min="1" max="50" value={questionCount} onChange={e=>setQuestionCount(Number(e.target.value)||10)}/></div><div className="form-group"><label className="form-label">Duration</label><input type="number" className="input" min="1" value={duration} onChange={e=>setDuration(Number(e.target.value)||15)}/></div><div className="form-group"><label className="form-label">Difficulty</label><select className="input" value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option>Easy</option><option>Medium</option><option>Hard</option><option>Mixed</option></select></div></div>
+          {builderMode==='AI'?<><div className="form-group"><label className="form-label">Material Source</label><input type="file" accept=".pdf,.docx,.txt,.csv,.md" onChange={e=>parseMaterialFile(e.target.files[0])}/><textarea className="input" style={{marginTop:10,minHeight:150}} value={materialText} onChange={e=>setMaterialText(e.target.value)} placeholder="Paste teaching material here..."/></div><div className="source-chip"><i className="fas fa-shield-check"/> AI questions are validated structurally and can require teacher approval before publishing.</div></>:<textarea className="input" style={{minHeight:220}} value={manualText} onChange={e=>setManualText(e.target.value)} placeholder="One question per line: Question | A | B | C | D | correctIndex"/>}
+        </Modal>}
+      </div>;
     }
 
-    // ===================== ASSIGNMENTS =====================
-    function AssignmentsPage({ user, role, viewAs }) {
-      const effectiveRole = viewAs || role;
-      const [activeTab, setActiveTab] = useState('active');
-      const student = DS.getStudentByUserId(user.id) || (effectiveRole==='STUDENT' && role!=='STUDENT' ? DS.getStudents()[0] : null);
-      const assignments = effectiveRole==='STUDENT' ? (DS.getAssignments(student?.classId) || []) : (DS.getAssignments() || []);
-      const submissions = student ? (DS.getSubmissions(null, student.id) || []) : [];
 
-      if (effectiveRole==='STUDENT') return (
-        <div>
-          <div className="tabs">
-            <button className={`tab ${activeTab==='active'?'active':''}`} onClick={()=>setActiveTab('active')}>Active ({assignments.filter(a=>a.status==='ACTIVE').length})</button>
-            <button className={`tab ${activeTab==='submitted'?'active':''}`} onClick={()=>setActiveTab('submitted')}>Submitted</button>
-          </div>
-          {activeTab==='active' && (
-            <div className="grid-2">{assignments.filter(a=>a.status==='ACTIVE').map(a=> {
-              const sub = DS.getSubmissions(a.id, student?.id);
-              const isSubmitted = sub.length > 0;
-              const daysLeft = Math.ceil((new Date(a.dueDate) - new Date()) / (1000*60*60*24));
-              return (
-                <div key={a.id} className="card animate-fadeIn">
-                  <div className="card-header"><h3 className="card-title">{a.title}</h3><span className={`badge ${daysLeft<3?'badge-danger':daysLeft<7?'badge-warning':'badge-success'}`}>{daysLeft} days left</span></div>
-                  <p style={{color:'var(--text-secondary)',fontSize:'14px',marginBottom:'12px'}}>{a.description}</p>
-                  <div style={{display:'flex',gap:'12px',marginBottom:'16px',flexWrap:'wrap'}}>
-                    <span className="badge badge-secondary"><i className="fas fa-book"></i> {DS.getSubjectById(a.subjectId)?.name}</span>
-                    <span className="badge badge-secondary"><i className="fas fa-star"></i> {a.maxMarks} marks</span>
-                    <span className="badge badge-secondary"><i className="fas fa-calendar"></i> Due: {a.dueDate}</span>
-                  </div>
-                  {isSubmitted ? (
-                    <div style={{padding:'12px',background:'var(--bg-primary)',borderRadius:'10px',display:'flex',alignItems:'center',gap:'10px'}}>
-                      <i className="fas fa-check-circle" style={{color:'var(--success)',fontSize:'20px'}}></i>
-                      <span style={{fontWeight:600}}>Submitted on {sub[0].submittedAt}</span>
-                      {sub[0].status==='GRADED' && <span className="badge badge-primary" style={{marginLeft:'auto'}}>{sub[0].marks}/{a.maxMarks}</span>}
-                    </div>
-                  ) : (
-                    <button className="btn btn-primary btn-block" onClick={()=>showToast('Assignment submission opened','info')}><i className="fas fa-upload"></i> Submit Assignment</button>
-                  )}
-                </div>
-              );
-            })}</div>
-          )}
-          {activeTab==='submitted' && (
-            <div className="card animate-fadeIn">
-              <div className="card-header"><h3 className="card-title">Submission History</h3></div>
-              <div className="table-container">
-                <table><thead><tr><th>Assignment</th><th>Submitted</th><th>Status</th><th>Marks</th></tr></thead>
-                <tbody>{submissions.map((s,i)=> {
-                  const assign = assignments.find(a=>a.id===s.assignmentId);
-                  return <tr key={i}><td>{assign?.title}</td><td>{s.submittedAt}</td><td><span className={`badge ${s.status==='GRADED'?'badge-success':'badge-warning'}`}>{s.status}</span></td><td>{s.marks!==null?`${s.marks}/${assign?.maxMarks}`:'Pending'}</td></tr>;
-                })}</tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-
-      return (
-        <div>
-          <div className="card animate-fadeIn">
-            <div className="card-header"><h3 className="card-title">Assignment Management</h3><button className="btn btn-primary btn-sm" onClick={()=>showToast('Create assignment form opened','info')}><i className="fas fa-plus"></i> New Assignment</button></div>
-            <div className="table-container">
-              <table><thead><tr><th>Title</th><th>Subject</th><th>Class</th><th>Due Date</th><th>Submissions</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>{assignments.map(a=> {
-                const subs = DS.getSubmissions(a.id);
-                return <tr key={a.id}><td><strong>{a.title}</strong></td><td>{DS.getSubjectById(a.subjectId)?.name}</td><td>{DS.getClassById(a.classId)?.name}</td>
-                <td>{a.dueDate}</td><td>{subs.length}</td>
-                <td><span className={`badge ${a.status==='ACTIVE'?'badge-success':'badge-secondary'}`}>{a.status}</span></td>
-                <td><button className="btn btn-sm btn-secondary"><i className="fas fa-edit"></i></button> <button className="btn btn-sm btn-primary"><i className="fas fa-eye"></i></button></td></tr>;
-              })}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ===================== GRADES =====================
-    function GradesPage({ user, role, viewAs }) {
-      const effectiveRole = viewAs || role;
-      const student = DS.getStudentByUserId(user.id) || (effectiveRole==='STUDENT' && role!=='STUDENT' ? DS.getStudents()[0] : null);
-      const grades = effectiveRole==='STUDENT' ? (DS.getGrades(student?.id) || []) : (DS.getGrades() || []);
-
-      if (effectiveRole==='STUDENT') return (
-        <div>
-          <div className="stats-grid">
-            <StatCard icon="fa-chart-line" iconClass="purple" label="CGPA" value={student?.cgpa||0} delay={1} />
-            <StatCard icon="fa-book" iconClass="blue" label="Subjects" value={grades.length} delay={2} />
-            <StatCard icon="fa-exclamation-circle" iconClass="red" label="Backlogs" value={student?.backlogs||0} delay={3} />
-          </div>
-          <div className="card animate-fadeIn">
-            <div className="card-header"><h3 className="card-title">Grade Card</h3></div>
-            <div className="table-container">
-              <table><thead><tr><th>Subject</th><th>Internal 1</th><th>Internal 2</th><th>Assignment</th><th>Mid Term</th><th>Total</th><th>Grade</th></tr></thead>
-              <tbody>{grades.map(g=> {
-                const sub = DS.getSubjectById(g.subjectId);
-                const total = (g.internal1||0)+(g.internal2||0)+(g.assignment||0)+(g.midTerm||0); const safeTotal = Math.min(total, 100);
-                const grade = total>=90?'A+':total>=80?'A':total>=70?'B':total>=60?'C':total>=50?'D':'F';
-                return <tr key={g.id}><td><strong>{sub?.name || 'Unknown'}</strong><div style={{fontSize:'12px',color:'var(--text-light)'}}>{sub?.code}</div></td>
-                <td>{g.internal1}</td><td>{g.internal2}</td><td>{g.assignment}</td><td>{g.midTerm}</td>
-                <td><strong>{safeTotal}</strong>/100</td><td><span className={`badge ${grade==='A+'||grade==='A'?'badge-success':grade==='F'?'badge-danger':'badge-warning'}`}>{grade}</span></td></tr>;
-              })}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
-
-      return (
-        <div>
-          <div className="card animate-fadeIn">
-            <div className="card-header"><h3 className="card-title">Gradebook</h3><button className="btn btn-primary btn-sm" onClick={()=>showToast('Bulk grade entry opened','info')}><i className="fas fa-plus"></i> Add Grades</button></div>
-            <div className="table-container">
-              <table><thead><tr><th>Student</th><th>Subject</th><th>Int 1</th><th>Int 2</th><th>Assign</th><th>Mid</th><th>Total</th><th>Actions</th></tr></thead>
-              <tbody>{grades.map(g=> {
-                const st = DS.getStudentById(g.studentId);
-                const sub = DS.getSubjectById(g.subjectId);
-                const total = (g.internal1||0)+(g.internal2||0)+(g.assignment||0)+(g.midTerm||0); const safeTotal = Math.min(total, 100);
-                return <tr key={g.id}><td className="td-name"><div className="td-avatar">{st?.name.charAt(0)}</div><div className="td-info"><span className="name">{st?.name}</span><span className="sub">{st?.rollNo}</span></div></td>
-                <td>{sub?.code}</td><td>{g.internal1}</td><td>{g.internal2}</td><td>{g.assignment}</td><td>{g.midTerm}</td><td><strong>{safeTotal}</strong></td>
-                <td><button className="btn btn-sm btn-secondary"><i className="fas fa-edit"></i></button></td></tr>;
-              })}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ===================== LIBRARY =====================
-    function LibraryPage({ user, role, viewAs }) {
-      const [search, setSearch] = useState('');
-      const books = DS.getLibraryBooks(search) || [];
-      return (
-        <div>
-          <div className="card animate-fadeIn" style={{marginBottom:'24px'}}>
-            <div className="card-header"><h3 className="card-title"><i className="fas fa-search"></i> Search Library</h3></div>
-            <div style={{display:'flex',gap:'12px'}}>
-              <input className="input" placeholder="Search by title or author..." value={search} onChange={e=>setSearch(e.target.value)} />
-              <button className="btn btn-primary"><i className="fas fa-search"></i></button>
-            </div>
-          </div>
-          <div className="grid-3">{books.map(b=> (
-            <div key={b.id} className="card animate-fadeIn">
-              <div style={{display:'flex',gap:'16px'}}>
-                <div style={{width:'60px',height:'80px',background:'var(--primary-gradient)',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'24px',color:'white',flexShrink:0}}><i className="fas fa-book"></i></div>
-                <div style={{flex:1,minWidth:0}}>
-                  <h4 style={{fontSize:'15px',fontWeight:700,marginBottom:'4px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{b.title}</h4>
-                  <p style={{fontSize:'13px',color:'var(--text-secondary)',marginBottom:'8px'}}>{b.author}</p>
-                  <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                    <span className="badge badge-secondary">{b.category}</span>
-                    <span className={`badge ${b.available?'badge-success':'badge-danger'}`}>{b.available?'Available':'Issued'}</span>
-                  </div>
-                </div>
-              </div>
-              <div style={{marginTop:'16px',paddingTop:'16px',borderTop:'1px solid var(--border-light)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontSize:'12px',color:'var(--text-light)'}}>ISBN: {b.isbn}</span>
-                <span style={{fontSize:'12px',color:'var(--text-light)'}}>{b.issued}/{b.total} issued</span>
-              </div>
-            </div>
-          ))}</div>
-        </div>
-      );
-    }
-
-    // ===================== FEES (COMPLETE REWRITE WITH ACCOUNTANT PANEL) =====================
+    // ===================== FEES =====================
     function FeesPage({ user, role, viewAs }) {
-      const effectiveRole = viewAs || role;
-      const [activeTab, setActiveTab] = useState('my-fees');
-      const [selectedStudent, setSelectedStudent] = useState(null);
-      const [showPayModal, setShowPayModal] = useState(false);
-      const [payData, setPayData] = useState({ amount: 0, method: 'UPI', head: 'TUITION' });
-      const [showReceipt, setShowReceipt] = useState(null);
-      const [filterMethod, setFilterMethod] = useState('ALL');
-      const [filterStatus, setFilterStatus] = useState('ALL');
-      const [dateRange, setDateRange] = useState({ from: '', to: '' });
-
-      const student = DS.getStudentByUserId(user.id) || (effectiveRole==='STUDENT' && role!=='STUDENT' ? DS.getStudents()[0] : null);
-      const feeStructure = student ? DS.getFeeStructureByClass(student.classId, student.semester) : null;
-      const myTxs = student ? DS.getFeeTransactions({ studentId: student.id }) : [];
-      const allTxs = DS.getFeeTransactions();
-      const students = DS.getStudents();
-      const feeHeads = ['TUITION', 'EXAM', 'TRANSPORT', 'HOSTEL', 'LIBRARY', 'LAB', 'DEVELOPMENT', 'SPORTS'];
-      const paymentMethods = ['UPI', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH', 'NEFT', 'ACH', 'ECHECK', 'PREPAID_CARD'];
-
-      const getMethodLabel = (m) => {
-        const map = { 'UPI':'UPI', 'CREDIT_CARD':'Credit Card', 'DEBIT_CARD':'Debit Card', 'CASH':'Cash', 'NEFT':'NEFT', 'ACH':'ACH', 'ECHECK':'eCheck', 'PREPAID_CARD':'Prepaid Card' };
-        return map[m] || m;
+      const effectiveRole=viewAs||role;
+      const [showPay,setShowPay]=useState(false), [showReceipt,setShowReceipt]=useState(null), [paymentStep,setPaymentStep]=useState(1);
+      const [selectedHeads,setSelectedHeads]=useState([]), [method,setMethod]=useState('UPI'), [filterMethod,setFilterMethod]=useState('ALL'), [search,setSearch]=useState('');
+      const student=DS.getStudentByUserId(user.id)||(effectiveRole==='STUDENT'&&role!=='STUDENT'?DS.getStudents()[0]:null);
+      const feeStructure=student?DS.getFeeStructureByClass(student.classId,student.semester):null;
+      const myTxs=student?DS.getFeeTransactions({studentId:student.id}):[]; const allTxs=DS.getFeeTransactions();
+      const paymentMethods=[['UPI','fa-mobile-alt'],['CREDIT_CARD','fa-credit-card'],['DEBIT_CARD','fa-credit-card'],['ACH','fa-university'],['ECHECK','fa-receipt'],['PREPAID_CARD','fa-id-card'],['NEFT','fa-building-columns'],['CASH','fa-money-bill-wave']];
+      const labels={UPI:'UPI',CREDIT_CARD:'Credit Card',DEBIT_CARD:'Debit Card',ACH:'ACH / Direct Debit',ECHECK:'eCheck',PREPAID_CARD:'Prepaid School Card',NEFT:'NEFT / Bank Transfer',CASH:'Cash'};
+      const getLabel=m=>labels[m]||m;
+      const getIcon=m=>paymentMethods.find(x=>x[0]===m)?.[1]||'fa-credit-card';
+      const balances=student?DS.getFeeHeadBalances(student.id):[];
+      const pendingTotal=balances.reduce((s,x)=>s+x.due,0); const totalPaid=balances.reduce((s,x)=>s+x.paid,0);
+      const selectedTotal=balances.filter(x=>selectedHeads.includes(x.head)).reduce((s,x)=>s+x.due,0);
+      const toggleHead=h=>setSelectedHeads(x=>x.includes(h)?x.filter(y=>y!==h):[...x,h]);
+      const openPay=()=>{const dueHeads=balances.filter(x=>x.due>0).map(x=>x.head);setSelectedHeads(dueHeads);setPaymentStep(1);setShowPay(true);};
+      const completePayment=()=>{
+        if(!student||selectedTotal<=0){showToast('Select at least one outstanding fee head','warning');return;}
+        const tx={id:`ft-${Date.now()}`,studentId:student.id,grNumber:student.grNumber,academicYear:feeStructure.academicYear,semester:student.semester,feeHead:selectedHeads.join(','),feeHeads:selectedHeads,amountPaid:selectedTotal,paymentMode:method,transactionId:`TXN${Date.now()}`,status:'SUCCESS',receiptNumber:DS.nextReceiptNumber(),paidAt:new Date().toISOString(),collectedBy:method==='CASH'?'u13':null,remarks:`Gateway-agnostic payment via ${getLabel(method)}`};
+        DS.addFeeTransaction(tx); setShowPay(false); setShowReceipt(tx); showToast(`Payment successful · ₹${selectedTotal.toLocaleString('en-IN')}`,'success');fireConfetti();
+        selectedHeads.forEach(h=>DS.addNotification({id:`n-${Date.now()}-${h}`,userId:student.userId,title:'Fee Payment Successful',message:`₹${DS.getFeeHeadBalances(student.id).find(x=>x.head===h)?.paid||0} payment recorded for ${h}. Receipt ${tx.receiptNumber}`,type:'SUCCESS',read:false,createdAt:new Date().toISOString()}));
       };
+      const ReceiptModal=({tx})=><Modal isOpen={!!tx} onClose={()=>setShowReceipt(null)} title={`E-Receipt · ${tx.receiptNumber}`} footer={<div style={{display:'flex',gap:8}}><button className="btn btn-secondary" onClick={()=>printReceipt(tx,'STUDENT')}>Print / Save PDF</button><button className="btn btn-primary" onClick={()=>setShowReceipt(null)}>Close</button></div>}><div className="receipt-box"><div style={{textAlign:'center'}}><div style={{fontSize:24,fontWeight:800}}>{DS.getSettings().institutionName}</div><div style={{fontSize:12,color:'var(--text-secondary)'}}>EDUTrack Pro · Official E-Receipt</div></div><div className="grid-2" style={{marginTop:20}}><div><label className="form-label">Student</label><strong>{DS.getStudentById(tx.studentId)?.name}</strong></div><div><label className="form-label">GR Number</label><strong>{tx.grNumber}</strong></div><div><label className="form-label">Receipt</label><strong>{tx.receiptNumber}</strong></div><div><label className="form-label">Transaction</label><strong>{tx.transactionId}</strong></div><div><label className="form-label">Fee Heads</label><strong>{tx.feeHeads?.join(', ')||tx.feeHead}</strong></div><div><label className="form-label">Method</label><strong>{getLabel(tx.paymentMode)}</strong></div></div><div style={{textAlign:'center',marginTop:20,paddingTop:18,borderTop:'2px dashed var(--border-color)'}}><div style={{fontSize:12,color:'var(--text-light)'}}>Amount Paid</div><div style={{fontSize:34,fontWeight:900,color:'var(--primary)'}}>₹{Number(tx.amountPaid).toLocaleString('en-IN')}</div><span className="badge badge-success">PAID</span></div></div></Modal>;
 
-      const getMethodIcon = (m) => {
-        const map = { 'UPI':'fa-mobile-alt', 'CREDIT_CARD':'fa-credit-card', 'DEBIT_CARD':'fa-credit-card', 'CASH':'fa-money-bill-wave', 'NEFT':'fa-university', 'ACH':'fa-university', 'ECHECK':'fa-receipt', 'PREPAID_CARD':'fa-id-card' };
-        return map[m] || 'fa-credit-card';
-      };
+      if(effectiveRole==='STUDENT') return <div><div className="stats-grid"><StatCard icon="fa-rupee-sign" iconClass="green" label="Total Paid" value={totalPaid} delay={1}/><StatCard icon="fa-exclamation-triangle" iconClass="red" label="Pending" value={pendingTotal} delay={2}/><StatCard icon="fa-receipt" iconClass="purple" label="Transactions" value={myTxs.length} delay={3}/><StatCard icon="fa-percentage" iconClass="blue" label="Payment Progress" value={feeStructure?Math.round(totalPaid/feeStructure.totalAmount*100):0} suffix="%" delay={4}/></div><div className="card animate-fadeIn" style={{marginBottom:20}}><div className="card-header"><h3 className="card-title"><i className="fas fa-file-invoice"/> Fee Card · Semester {student?.semester}</h3><span className={`badge ${pendingTotal?'badge-warning':'badge-success'}`}>{pendingTotal?'Payment Due':'Fully Paid'}</span></div>{balances.map(f=><div className="fee-select-row" key={f.head}><div><span className={`fee-head-badge ${f.mandatory?'mandatory':'optional'}`}>{f.head}</span><div style={{fontSize:11,color:'var(--text-light)',marginTop:5}}>{f.mandatory?'Mandatory':'Optional'} · Paid ₹{f.paid.toLocaleString('en-IN')} / ₹{f.amount.toLocaleString('en-IN')}</div></div><strong>{f.due>0?`₹${f.due.toLocaleString('en-IN')} due`:'✓ Paid'}</strong></div>)}<div style={{marginTop:18,padding:20,borderRadius:14,background:'var(--bg-primary)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}><div><div style={{fontSize:12,color:'var(--text-light)'}}>Outstanding Balance</div><div style={{fontSize:30,fontWeight:900}}>₹{pendingTotal.toLocaleString('en-IN')}</div></div>{pendingTotal>0&&<button className="btn btn-primary btn-lg" onClick={openPay}><i className="fas fa-credit-card"/> Pay Now</button>}</div></div><div className="card"><div className="card-header"><h3 className="card-title"><i className="fas fa-history"/> Payment History</h3></div><div className="table-container"><table><thead><tr><th>Date</th><th>Receipt</th><th>Fee Heads</th><th>Amount</th><th>Method</th><th>Status</th><th/></tr></thead><tbody>{myTxs.map(t=><tr key={t.id}><td>{new Date(t.paidAt).toLocaleDateString()}</td><td>{t.receiptNumber}</td><td>{t.feeHeads?.join(', ')||t.feeHead}</td><td><strong>₹{Number(t.amountPaid).toLocaleString('en-IN')}</strong></td><td>{getLabel(t.paymentMode)}</td><td><span className="badge badge-success">{t.status}</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>setShowReceipt(t)}><i className="fas fa-receipt"/></button></td></tr>)}</tbody></table></div></div>{showPay&&<Modal isOpen={showPay} onClose={()=>setShowPay(false)} title={`Pay Fees · Step ${paymentStep} of 2`} footer={paymentStep===1?<><button className="btn btn-secondary" onClick={()=>setShowPay(false)}>Cancel</button><button className="btn btn-primary" disabled={!selectedTotal} onClick={()=>setPaymentStep(2)}>Continue · ₹{selectedTotal.toLocaleString('en-IN')}</button></>:<><button className="btn btn-secondary" onClick={()=>setPaymentStep(1)}>Back</button><button className="btn btn-success" onClick={completePayment}><i className="fas fa-lock"/> Confirm Payment · ₹{selectedTotal.toLocaleString('en-IN')}</button></>}>
+        {paymentStep===1?<div><p style={{color:'var(--text-secondary)',marginBottom:12}}>Select the outstanding fee heads you want to pay.</p>{balances.filter(f=>f.due>0).map(f=><div key={f.head} className={`fee-select-row ${selectedHeads.includes(f.head)?'selected':''}`} onClick={()=>toggleHead(f.head)}><div style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={selectedHeads.includes(f.head)} onChange={()=>toggleHead(f.head)} onClick={e=>e.stopPropagation()}/><div><strong>{f.head}</strong><div style={{fontSize:11,color:'var(--text-light)'}}>Outstanding ₹{f.due.toLocaleString('en-IN')}</div></div></div><strong>₹{f.due.toLocaleString('en-IN')}</strong></div>)}<div style={{marginTop:16,textAlign:'right',fontSize:18,fontWeight:800}}>Total: ₹{selectedTotal.toLocaleString('en-IN')}</div></div>:<div><div className="receipt-box" style={{marginBottom:16}}><strong>Amount to pay</strong><div style={{fontSize:30,fontWeight:900,color:'var(--primary)'}}>₹{selectedTotal.toLocaleString('en-IN')}</div><div style={{fontSize:12,color:'var(--text-light)'}}>{selectedHeads.join(', ')}</div></div><label className="form-label">Payment Method</label><div className="payment-method-grid">{paymentMethods.map(([m,ic])=><div key={m} className={`payment-method-card ${method===m?'active':''}`} onClick={()=>setMethod(m)}><i className={`fas ${ic}`}/><div><strong>{getLabel(m)}</strong><div style={{fontSize:10,color:'var(--text-light)'}}>{['UPI','CREDIT_CARD','DEBIT_CARD','ACH','ECHECK','PREPAID_CARD'].includes(m)?'Online / gateway-ready':'Institution recorded method'}</div></div></div>)}</div><p style={{fontSize:12,color:'var(--text-light)',marginTop:12}}><i className="fas fa-shield-alt"/> Gateway-agnostic demo. Production payment success must be verified server-side before marking the transaction paid.</p></div>}
+      </Modal>}{showReceipt&&<ReceiptModal tx={showReceipt}/>}</div>;
 
-      const handlePayFee = () => {
-        if (!student || !feeStructure) { showToast('No fee structure found','error'); return; }
-        if (payData.amount <= 0 || payData.amount > feeStructure.totalAmount) { showToast('Invalid amount','error'); return; }
-        const tx = {
-          id: `ft-${Date.now()}`,
-          studentId: student.id,
-          grNumber: student.grNumber,
-          academicYear: feeStructure.academicYear,
-          semester: student.semester,
-          feeHead: payData.head,
-          amountPaid: payData.amount,
-          paymentMode: payData.method,
-          transactionId: `TXN${Date.now()}`,
-          status: 'SUCCESS',
-          receiptNumber: `RCP${Date.now()}`,
-          paidAt: new Date().toISOString(),
-          collectedBy: null,
-          remarks: `Payment via ${getMethodLabel(payData.method)}`
-        };
-        DS.addFeeTransaction(tx);
-        setShowPayModal(false);
-        setPayData({ amount: 0, method: 'UPI', head: 'TUITION' });
-        showToast(`✅ Payment of ₹${tx.amountPaid} recorded!`, 'success');
-        fireConfetti();
-        if (student) {
-          const pending = DS.getTotalPending(student.id);
-          if (pending === 0) showToast('🎉 All fees cleared!', 'success');
-        }
-      };
-
-      const viewReceipt = (tx) => {
-        setShowReceipt(tx);
-      };
-
-      if (effectiveRole === 'STUDENT' || (effectiveRole === 'ACCOUNTANT' && activeTab === 'my-fees')) {
-        const pendingTotal = student ? DS.getTotalPending(student.id) : 0;
-        const totalPaid = student ? myTxs.filter(t => t.status === 'SUCCESS').reduce((s,t) => s + t.amountPaid, 0) : 0;
-        return (
-          <div>
-            <div className="stats-grid">
-              <StatCard icon="fa-rupee-sign" iconClass="green" label="Total Paid" value={totalPaid} suffix="" delay={1} />
-              <StatCard icon="fa-exclamation-triangle" iconClass="red" label="Pending" value={pendingTotal} suffix="" delay={2} />
-              <StatCard icon="fa-receipt" iconClass="purple" label="Transactions" value={myTxs.length} delay={3} />
-              <StatCard icon="fa-percentage" iconClass="blue" label="Progress" value={feeStructure ? Math.round((totalPaid/feeStructure.totalAmount)*100) : 0} suffix="%" delay={4} />
-            </div>
-            {feeStructure && (
-              <div className="card animate-fadeIn" style={{marginBottom:'24px'}}>
-                <div className="card-header"><h3 className="card-title"><i className="fas fa-file-invoice"></i> Fee Card - Semester {feeStructure.semester}</h3><span className={`badge ${pendingTotal > 0 ? 'badge-warning' : 'badge-success'}`}>{pendingTotal > 0 ? '⚠️ Pending' : '✅ Paid'}</span></div>
-                <div className="grid-2">
-                  <div>
-                    {feeStructure.feeHeads.map((fh, idx) => {
-                      const paid = myTxs.filter(t => t.feeHead === fh.head && t.status === 'SUCCESS').reduce((s,t) => s + t.amountPaid, 0);
-                      const remaining = Math.max(0, fh.amount - paid);
-                      return (
-                        <div key={idx} style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid var(--border-light)'}}>
-                          <span className={`fee-head-badge ${fh.mandatory ? 'mandatory' : 'optional'}`}>
-                            <i className={`fas ${fh.mandatory ? 'fa-check-circle' : 'fa-circle'}`}></i> {fh.head}
-                          </span>
-                          <div><span style={{color:'var(--text-secondary)'}}>₹{paid} / ₹{fh.amount}</span> {remaining > 0 && <span className="badge badge-danger" style={{marginLeft:'8px'}}>₹{remaining}</span>}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{padding:'20px',background:'var(--bg-primary)',borderRadius:'12px',display:'flex',flexDirection:'column',justifyContent:'center'}}>
-                    <div style={{fontSize:'14px',color:'var(--text-secondary)',textAlign:'center'}}>Total Fee</div>
-                    <div style={{fontSize:'36px',fontWeight:800,textAlign:'center',fontFamily:'Space Grotesk'}}>₹{feeStructure.totalAmount.toLocaleString()}</div>
-                    <div style={{fontSize:'14px',color:'var(--text-secondary)',textAlign:'center',marginTop:'8px'}}>Paid: ₹{totalPaid} · Due: <span style={{color:'var(--danger)',fontWeight:700}}>₹{pendingTotal}</span></div>
-                    {pendingTotal > 0 && (
-                      <button className="btn btn-primary btn-block" style={{marginTop:'16px'}} onClick={() => setShowPayModal(true)}>
-                        <i className="fas fa-credit-card"></i> Pay Now
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className="card animate-fadeIn">
-              <div className="card-header"><h3 className="card-title"><i className="fas fa-history"></i> Transaction History</h3></div>
-              <div className="table-container">
-                <table><thead><tr><th>Date</th><th>Fee Head</th><th>Amount</th><th>Method</th><th>Status</th><th>Receipt</th></tr></thead>
-                <tbody>{myTxs.map(t => (
-                  <tr key={t.id}><td>{new Date(t.paidAt).toLocaleDateString()}</td>
-                  <td><span className="badge badge-secondary">{t.feeHead}</span></td>
-                  <td><strong>₹{t.amountPaid}</strong></td>
-                  <td><span className="badge badge-info"><i className={`fas ${getMethodIcon(t.paymentMode)}`}></i> {getMethodLabel(t.paymentMode)}</span></td>
-                  <td><span className={`badge ${t.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}`}>{t.status}</span></td>
-                  <td><button className="btn btn-sm btn-secondary" onClick={()=>viewReceipt(t)}><i className="fas fa-receipt"></i></button></td></tr>
-                ))}</tbody>
-                </table>
-              </div>
-            </div>
-            {showPayModal && (
-              <Modal isOpen={showPayModal} onClose={()=>setShowPayModal(false)} title="Pay Fees" footer={<><button className="btn btn-secondary" onClick={()=>setShowPayModal(false)}>Cancel</button><button className="btn btn-success btn-lg" onClick={handlePayFee}><i className="fas fa-check"></i> Pay ₹{payData.amount}</button></>}>
-                <div className="form-group"><label className="form-label">Fee Head</label><select className="input" value={payData.head} onChange={e=>setPayData({...payData, head:e.target.value})}>{feeHeads.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Amount (₹)</label><input type="number" className="input" value={payData.amount} onChange={e=>setPayData({...payData, amount: parseInt(e.target.value) || 0})} placeholder="Enter amount" min="1" max={feeStructure?.totalAmount || 999999} /></div>
-                <div className="form-group"><label className="form-label">Payment Method</label><select className="input" value={payData.method} onChange={e=>setPayData({...payData, method:e.target.value})}>{paymentMethods.map(m=><option key={m} value={m}>{getMethodLabel(m)}</option>)}</select></div>
-                <p style={{fontSize:'13px',color:'var(--text-light)',marginTop:'8px'}}><i className="fas fa-info-circle"></i> This is a gateway-agnostic simulation. Real integrations can be added.</p>
-              </Modal>
-            )}
-            {showReceipt && (
-              <Modal isOpen={!!showReceipt} onClose={()=>setShowReceipt(null)} title={`Receipt #${showReceipt.receiptNumber}`} footer={<button className="btn btn-secondary" onClick={()=>setShowReceipt(null)}>Close</button>}>
-                <div className="receipt-box">
-                  <div style={{textAlign:'center',marginBottom:'16px'}}>
-                    <div style={{fontSize:'24px',fontWeight:800}}>EDUTrack Pro</div>
-                    <div style={{fontSize:'12px',color:'var(--text-secondary)'}}>{DS.getSettings().institutionName}</div>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',fontSize:'14px'}}>
-                    <div><span style={{color:'var(--text-light)'}}>Receipt #</span> <strong>{showReceipt.receiptNumber}</strong></div>
-                    <div><span style={{color:'var(--text-light)'}}>Date</span> <strong>{new Date(showReceipt.paidAt).toLocaleString()}</strong></div>
-                    <div><span style={{color:'var(--text-light)'}}>Student</span> <strong>{DS.getStudentById(showReceipt.studentId)?.name}</strong></div>
-                    <div><span style={{color:'var(--text-light)'}}>GR</span> <strong>{showReceipt.grNumber}</strong></div>
-                    <div><span style={{color:'var(--text-light)'}}>Fee Head</span> <strong>{showReceipt.feeHead}</strong></div>
-                    <div><span style={{color:'var(--text-light)'}}>Method</span> <strong>{getMethodLabel(showReceipt.paymentMode)}</strong></div>
-                    <div style={{gridColumn:'span 2',textAlign:'center',paddingTop:'16px',borderTop:'2px dashed var(--border-color)'}}>
-                      <span style={{fontSize:'12px',color:'var(--text-light)'}}>Amount</span>
-                      <div style={{fontSize:'32px',fontWeight:800,color:'var(--primary)'}}>₹{showReceipt.amountPaid}</div>
-                    </div>
-                  </div>
-                  <div style={{textAlign:'center',marginTop:'16px',fontSize:'11px',color:'var(--text-light)'}}>
-                    <i className="fas fa-check-circle" style={{color:'var(--success)'}}></i> Transaction ID: {showReceipt.transactionId} · Status: {showReceipt.status}
-                  </div>
-                </div>
-              </Modal>
-            )}
-          </div>
-        );
+      if(effectiveRole==='ACCOUNTANT'){
+        const filtered=allTxs.filter(t=>(filterMethod==='ALL'||t.paymentMode===filterMethod)&&(!search||String(t.grNumber).toLowerCase().includes(search.toLowerCase())||String(DS.getStudentById(t.studentId)?.name||'').toLowerCase().includes(search.toLowerCase())));
+        const total=filtered.filter(t=>t.status==='SUCCESS').reduce((a,t)=>a+Number(t.amountPaid||0),0);
+        return <div><div className="stats-grid"><StatCard icon="fa-rupee-sign" iconClass="green" label="Collected" value={total} delay={1}/><StatCard icon="fa-receipt" iconClass="purple" label="Transactions" value={filtered.length} delay={2}/><StatCard icon="fa-users" iconClass="blue" label="Students" value={DS.getStudents().length} delay={3}/><StatCard icon="fa-exclamation-triangle" iconClass="red" label="Outstanding Students" value={DS.getStudents().filter(s=>DS.getTotalPending(s.id)>0).length} delay={4}/></div><div className="card" style={{marginBottom:20}}><div style={{display:'flex',gap:10,flexWrap:'wrap'}}><input className="input" style={{flex:1,minWidth:220}} placeholder="Search student or GR..." value={search} onChange={e=>setSearch(e.target.value)}/><select className="input" style={{width:'auto'}} value={filterMethod} onChange={e=>setFilterMethod(e.target.value)}><option value="ALL">All payment methods</option>{paymentMethods.map(([m])=><option key={m} value={m}>{getLabel(m)}</option>)}</select></div></div><div className="card"><div className="card-header"><h3 className="card-title"><i className="fas fa-file-invoice-dollar"/> Accountant Payment Ledger</h3></div><div className="table-container"><table><thead><tr><th>Date</th><th>Receipt</th><th>GR</th><th>Student</th><th>Fee Head</th><th>Amount</th><th>Method</th><th>Status</th><th/></tr></thead><tbody>{filtered.map(t=><tr key={t.id}><td>{new Date(t.paidAt).toLocaleDateString()}</td><td>{t.receiptNumber}</td><td><span className="badge badge-primary">{t.grNumber}</span></td><td>{DS.getStudentById(t.studentId)?.name||'Unknown'}</td><td>{t.feeHeads?.join(', ')||t.feeHead}</td><td><strong>₹{Number(t.amountPaid).toLocaleString('en-IN')}</strong></td><td><span className="badge badge-info"><i className={`fas ${getIcon(t.paymentMode)}`}/> {getLabel(t.paymentMode)}</span></td><td><span className={`badge ${t.status==='SUCCESS'?'badge-success':'badge-warning'}`}>{t.status}</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>setShowReceipt(t)}><i className="fas fa-receipt"/></button></td></tr>)}</tbody></table></div></div>{showReceipt&&<Modal isOpen={!!showReceipt} onClose={()=>setShowReceipt(null)} title={`Accountant Receipt · ${showReceipt.receiptNumber}`} footer={<><button className="btn btn-secondary" onClick={()=>printReceipt(showReceipt,'ADMIN / ACCOUNTANT')}>Print / Save PDF</button><button className="btn btn-primary" onClick={()=>setShowReceipt(null)}>Close</button></>}><div className="receipt-box"><h3 style={{textAlign:'center'}}>{DS.getSettings().institutionName}</h3><div className="grid-2" style={{marginTop:18}}><div><label className="form-label">Student</label><strong>{DS.getStudentById(showReceipt.studentId)?.name}</strong></div><div><label className="form-label">GR</label><strong>{showReceipt.grNumber}</strong></div><div><label className="form-label">Receipt</label><strong>{showReceipt.receiptNumber}</strong></div><div><label className="form-label">Transaction</label><strong>{showReceipt.transactionId}</strong></div><div><label className="form-label">Fee Heads</label><strong>{showReceipt.feeHeads?.join(', ')||showReceipt.feeHead}</strong></div><div><label className="form-label">Payment Method</label><strong>{getLabel(showReceipt.paymentMode)}</strong></div></div><div style={{textAlign:'center',marginTop:20,fontSize:32,fontWeight:900,color:'var(--primary)'}}>₹{Number(showReceipt.amountPaid).toLocaleString('en-IN')}</div></div></Modal>}</div>;
       }
-
-      if (effectiveRole === 'ACCOUNTANT') {
-        const filteredTxs = allTxs.filter(t => {
-          if (filterMethod !== 'ALL' && t.paymentMode !== filterMethod) return false;
-          if (filterStatus !== 'ALL' && t.status !== filterStatus) return false;
-          if (dateRange.from && new Date(t.paidAt) < new Date(dateRange.from)) return false;
-          if (dateRange.to && new Date(t.paidAt) > new Date(dateRange.to)) return false;
-          return true;
-        });
-        const totalCollected = filteredTxs.filter(t => t.status === 'SUCCESS').reduce((s,t) => s + t.amountPaid, 0);
-        const methodStats = {};
-        filteredTxs.filter(t => t.status === 'SUCCESS').forEach(t => {
-          methodStats[t.paymentMode] = (methodStats[t.paymentMode] || 0) + t.amountPaid;
-        });
-
-        return (
-          <div>
-            <div className="stats-grid">
-              <StatCard icon="fa-rupee-sign" iconClass="green" label="Total Collection" value={totalCollected} suffix="" delay={1} />
-              <StatCard icon="fa-receipt" iconClass="purple" label="Transactions" value={filteredTxs.length} delay={2} />
-              <StatCard icon="fa-users" iconClass="blue" label="Students" value={students.length} delay={3} />
-              <StatCard icon="fa-exclamation-triangle" iconClass="red" label="Defaulters" value={students.filter(s => DS.getTotalPending(s.id) > 0).length} delay={4} />
-            </div>
-            <div className="grid-2" style={{marginBottom:'24px'}}>
-              <div className="card animate-fadeIn">
-                <div className="card-header"><h3 className="card-title"><i className="fas fa-chart-pie"></i> Method Breakdown</h3></div>
-                <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
-                  {Object.entries(methodStats).length === 0 && <p style={{color:'var(--text-light)'}}>No data yet</p>}
-                  {Object.entries(methodStats).map(([method, amount]) => (
-                    <div key={method} style={{flex:'1',minWidth:'120px',padding:'12px',background:'var(--bg-primary)',borderRadius:'10px',textAlign:'center'}}>
-                      <i className={`fas ${getMethodIcon(method)}`} style={{fontSize:'20px',color:'var(--primary)'}}></i>
-                      <div style={{fontWeight:700,fontSize:'16px'}}>₹{amount}</div>
-                      <div style={{fontSize:'11px',color:'var(--text-light)'}}>{getMethodLabel(method)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="card animate-fadeIn">
-                <div className="card-header"><h3 className="card-title"><i className="fas fa-filter"></i> Filters</h3></div>
-                <div style={{display:'flex',gap:'12px',flexWrap:'wrap'}}>
-                  <select className="input" style={{width:'auto'}} value={filterMethod} onChange={e=>setFilterMethod(e.target.value)}>
-                    <option value="ALL">All Methods</option>{paymentMethods.map(m=><option key={m} value={m}>{getMethodLabel(m)}</option>)}
-                  </select>
-                  <select className="input" style={{width:'auto'}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
-                    <option value="ALL">All Status</option><option value="SUCCESS">Success</option><option value="FAILED">Failed</option><option value="PENDING">Pending</option>
-                  </select>
-                  <input type="date" className="input" style={{width:'auto'}} value={dateRange.from} onChange={e=>setDateRange({...dateRange, from:e.target.value})} />
-                  <input type="date" className="input" style={{width:'auto'}} value={dateRange.to} onChange={e=>setDateRange({...dateRange, to:e.target.value})} />
-                </div>
-              </div>
-            </div>
-            <div className="card animate-fadeIn">
-              <div className="card-header"><h3 className="card-title"><i className="fas fa-list"></i> All Transactions ({filteredTxs.length})</h3></div>
-              <div className="table-container">
-                <table><thead><tr><th>Date</th><th>GR</th><th>Student</th><th>Head</th><th>Amount</th><th>Method</th><th>Status</th><th>Receipt</th></tr></thead>
-                <tbody>{filteredTxs.map(t => {
-                  const st = DS.getStudentById(t.studentId);
-                  return <tr key={t.id}>
-                    <td>{new Date(t.paidAt).toLocaleDateString()}</td>
-                    <td><span className="badge badge-primary" style={{fontSize:'10px'}}>{t.grNumber}</span></td>
-                    <td>{st?.name || 'Unknown'}</td>
-                    <td><span className="badge badge-secondary">{t.feeHead}</span></td>
-                    <td><strong>₹{t.amountPaid}</strong></td>
-                    <td><span className="badge badge-info"><i className={`fas ${getMethodIcon(t.paymentMode)}`}></i> {getMethodLabel(t.paymentMode)}</span></td>
-                    <td><span className={`badge ${t.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}`}>{t.status}</span></td>
-                    <td><button className="btn btn-sm btn-secondary" onClick={()=>viewReceipt(t)}><i className="fas fa-receipt"></i></button></td>
-                  </tr>;
-                })}</tbody>
-                </table>
-              </div>
-            </div>
-            {showReceipt && (
-              <Modal isOpen={!!showReceipt} onClose={()=>setShowReceipt(null)} title={`Receipt #${showReceipt.receiptNumber}`} footer={<button className="btn btn-secondary" onClick={()=>setShowReceipt(null)}>Close</button>}>
-                <div className="receipt-box">{/* same receipt content as above */}</div>
-              </Modal>
-            )}
-          </div>
-        );
-      }
-
-      // Admin view - Fee Structure Manager
-      return (
-        <div>
-          <div className="card animate-fadeIn">
-            <div className="card-header"><h3 className="card-title"><i className="fas fa-cog"></i> Fee Structure Manager</h3><button className="btn btn-primary btn-sm" onClick={()=>showToast('Create new fee structure','info')}><i className="fas fa-plus"></i> New Structure</button></div>
-            <div className="table-container">
-              <table><thead><tr><th>Class</th><th>Semester</th><th>Total Amount</th><th>Due Date</th><th>Heads</th><th>Actions</th></tr></thead>
-              <tbody>{(DS.getFeeStructures() || []).map(fs => {
-                const cls = DS.getClassById(fs.classId);
-                return <tr key={fs.id}>
-                  <td>{cls?.name || fs.classId}</td>
-                  <td>{fs.semester}</td>
-                  <td><strong>₹{fs.totalAmount.toLocaleString()}</strong></td>
-                  <td>{fs.dueDate}</td>
-                  <td>{fs.feeHeads.length} heads</td>
-                  <td><button className="btn btn-sm btn-secondary"><i className="fas fa-edit"></i></button></td>
-                </tr>;
-              })}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
+      return <div className="card"><div className="card-header"><h3 className="card-title">Fee Structure Manager</h3></div><div className="table-container"><table><thead><tr><th>Class</th><th>Semester</th><th>Total</th><th>Due</th><th>Heads</th></tr></thead><tbody>{DS.getFeeStructures().map(f=><tr key={f.id}><td>{DS.getClassById(f.classId)?.name||f.classId}</td><td>{f.semester}</td><td>₹{Number(f.totalAmount).toLocaleString('en-IN')}</td><td>{f.dueDate}</td><td>{f.feeHeads.map(x=>x.head).join(', ')}</td></tr>)}</tbody></table></div></div>;
     }
+
 
     // ===================== TRANSPORT =====================
     function TransportPage({ user, role, viewAs }) {
@@ -2904,124 +2608,16 @@
     }
 
     // ===================== IMPORT CENTER =====================
-    function ImportCenterPage({ user, role, viewAs }) {
-      const [activeTab, setActiveTab] = useState('import');
-      const [importData, setImportData] = useState([]);
-      const [previewData, setPreviewData] = useState([]);
-      const [importLogs, setImportLogs] = useState(DS.getImportLogs());
-      const [isDragging, setIsDragging] = useState(false);
-      const [importing, setImporting] = useState(false);
-
-      const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const text = event.target.result;
-            const lines = text.split('\n').filter(line => line.trim());
-            const headers = lines[0].split(',').map(h => h.trim());
-            const rows = lines.slice(1).map(line => {
-              const values = line.split(',').map(v => v.trim());
-              const obj = {};
-              headers.forEach((h, i) => { obj[h] = values[i] || ''; });
-              return obj;
-            });
-            const validRows = rows.filter(r => r.Name && r.Phone);
-            setPreviewData(validRows);
-            setImportData(validRows);
-            showToast(`Loaded ${validRows.length} students from file`, 'success');
-          } catch (err) {
-            showToast('Error reading file: ' + err.message, 'error');
-          }
-        };
-        reader.readAsText(file);
-      };
-
-      const executeImport = () => {
-        if (importData.length === 0) { showToast('No data to import','error'); return; }
-        setImporting(true);
-        setTimeout(() => {
-          let success = 0, failed = 0;
-          const settings = DS.getSettings();
-          const year = new Date().getFullYear();
-          let seq = DS.getNextGRSequence(year);
-          importData.forEach(row => {
-            try {
-              if (!row.Name || !row.Phone) { failed++; return; }
-              const grNumber = DS.generateGRNumber(year, seq++);
-              const email = DS.generateEmail(row.Name);
-              const userId = 'u-' + Date.now();
-              DS.addUser({ id: userId, name: row.Name, email: email, role: 'STUDENT', password: grNumber, avatar: null, phone: row.Phone, joined: new Date().toISOString().split('T')[0] });
-              const classId = row.Class || 'cls1';
-              const deptId = row.Department || 'd1';
-              DS.addStudent({ id: 's-' + Date.now(), userId: userId, grNumber: grNumber, name: row.Name, rollNo: grNumber, classId: classId, department: deptId, semester: parseInt(row.Semester) || 1, attendance: parseInt(row.Attendance) || 0, curriculumProgress: parseInt(row.Progress) || 0, quizAverage: parseInt(row.QuizAvg) || 0, cgpa: parseFloat(row.CGPA) || 0, backlogs: parseInt(row.Backlogs) || 0, gender: row.Gender || 'Male', dob: row.DOB || '', address: row.Address || '', guardian: row.Guardian || '', guardianPhone: row.GuardianPhone || '', admissionYear: year });
-              success++;
-            } catch (err) { failed++; }
-          });
-          DS.addImportLog({ id: `log-${Date.now()}`, total: importData.length, success, failed, timestamp: new Date().toISOString(), fileName: 'import.csv' });
-          setImportLogs(DS.getImportLogs());
-          setPreviewData([]);
-          setImportData([]);
-          setImporting(false);
-          showToast(`✅ Imported ${success} students, ${failed} failed`, success > 0 ? 'success' : 'error');
-          fireConfetti();
-        }, 1000);
-      };
-
-      return (
-        <div>
-          <div className="tabs">
-            <button className={`tab ${activeTab==='import'?'active':''}`} onClick={()=>setActiveTab('import')}>Import</button>
-            <button className={`tab ${activeTab==='logs'?'active':''}`} onClick={()=>setActiveTab('logs')}>Logs</button>
-          </div>
-          {activeTab === 'import' && (
-            <div>
-              <div className="card animate-fadeIn" style={{marginBottom:'24px'}}>
-                <div className="card-header"><h3 className="card-title"><i className="fas fa-upload"></i> Bulk Student Import</h3></div>
-                <p style={{color:'var(--text-secondary)',marginBottom:'16px'}}>Upload a CSV/Excel file with student data. Columns: Name, Phone, Class, Department, Semester, Attendance, Progress, QuizAvg, CGPA, Backlogs, Gender, DOB, Address, Guardian, GuardianPhone</p>
-                <div className={`upload-zone ${isDragging ? 'dragover' : ''}`} onDragOver={(e)=>{e.preventDefault(); setIsDragging(true);}} onDragLeave={()=>setIsDragging(false)} onDrop={(e)=>{e.preventDefault(); setIsDragging(false); const file=e.dataTransfer.files[0]; if(file){ const ev={target:{files:[file]}}; handleFileUpload(ev); }}}>
-                  <i className="fas fa-cloud-upload-alt" style={{fontSize:'48px',color:'var(--primary)',marginBottom:'16px'}}></i>
-                  <h4 style={{fontWeight:600}}>Drag & Drop CSV file here</h4>
-                  <p style={{fontSize:'13px',color:'var(--text-secondary)'}}>or click to browse</p>
-                  <input type="file" accept=".csv,.xlsx" onChange={handleFileUpload} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer'}} />
-                </div>
-                {previewData.length > 0 && (
-                  <div style={{marginTop:'16px'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
-                      <span style={{fontWeight:700}}>{previewData.length} records ready to import</span>
-                      <button className="btn btn-success" onClick={executeImport} disabled={importing}>
-                        {importing ? <><i className="fas fa-circle-notch fa-spin"></i> Importing...</> : <><i className="fas fa-check"></i> Import All</>}
-                      </button>
-                    </div>
-                    <div className="table-container" style={{maxHeight:'300px',overflowY:'auto'}}>
-                      <table><thead><tr>{Object.keys(previewData[0] || {}).map(k=><th key={k}>{k}</th>)}</tr></thead>
-                      <tbody>{previewData.slice(0,10).map((row,idx)=>(
-                        <tr key={idx}>{Object.values(row).map((v,i)=><td key={i}>{v}</td>)}</tr>
-                      ))}</tbody>
-                      </table>
-                    </div>
-                    {previewData.length > 10 && <p style={{fontSize:'12px',color:'var(--text-light)',marginTop:'8px'}}>Showing first 10 of {previewData.length} rows</p>}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {activeTab === 'logs' && (
-            <div className="card animate-fadeIn">
-              <div className="card-header"><h3 className="card-title"><i className="fas fa-history"></i> Import Logs</h3></div>
-              <div className="table-container">
-                <table><thead><tr><th>Date</th><th>File</th><th>Total</th><th>Success</th><th>Failed</th></tr></thead>
-                <tbody>{importLogs.map(log => (
-                  <tr key={log.id}><td>{new Date(log.timestamp).toLocaleString()}</td><td>{log.fileName}</td><td>{log.total}</td><td><span className="badge badge-success">{log.success}</span></td><td><span className="badge badge-danger">{log.failed}</span></td></tr>
-                ))}</tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      );
+    function ImportCenterPage({ user }) {
+      const [preview,setPreview]=useState([]),[fileName,setFileName]=useState(''),[busy,setBusy]=useState(false),[logs,setLogs]=useState(DS.getImportLogs());
+      const normalizeRow=row=>{const out={};Object.keys(row||{}).forEach(k=>{out[String(k).trim().toLowerCase().replace(/\s+/g,'')]=row[k];});return out;};
+      const resolveClassId=v=>{const x=String(v||'').trim();if(!x)return 'cls1';const byId=DS.getClassById(x);if(byId)return byId.id;return DS.getClasses().find(c=>String(c.name).toLowerCase()===x.toLowerCase())?.id||'cls1';};
+      const resolveDeptId=v=>{const x=String(v||'').trim();if(!x)return 'd1';const byId=DS.getDepartmentById(x);if(byId)return byId.id;return DS.getDepartments().find(d=>String(d.name).toLowerCase()===x.toLowerCase()||String(d.code).toLowerCase()===x.toLowerCase())?.id||'d1';};
+      const parseFile=async(file)=>{if(!file)return;setBusy(true);setFileName(file.name);try{let rows=[];const ext=file.name.toLowerCase().split('.').pop();if(ext==='xlsx'||ext==='xls'){if(!window.XLSX)throw new Error('Excel parser not loaded');const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{defval:''});}else{const text=await file.text();const lines=text.split(/\r?\n/).filter(Boolean);const headers=lines.shift().split(',').map(x=>x.trim());rows=lines.map(line=>{const vals=line.split(',');const o={};headers.forEach((h,i)=>o[h]=vals[i]||'');return o;});}setPreview(rows.map(normalizeRow).filter(r=>r.name&&r.phone));showToast('File parsed successfully','success');}catch(e){showToast('Import read error: '+e.message,'error');}finally{setBusy(false);}};
+      const importAll=()=>{if(!preview.length){showToast('No valid rows','warning');return;}setBusy(true);setTimeout(()=>{let success=0,failed=0;const details=[];preview.forEach(row=>{try{const data={name:String(row.name).trim(),phone:String(row.phone).trim(),classId:resolveClassId(row.class),department:resolveDeptId(row.department),semester:Number(row.semester)||1,admissionYear:Number(row.admissionyear)||new Date().getFullYear(),sequence:row.roll||row.sequence||'',guardian:row.guardian||'',guardianPhone:row.guardianphone||'',gender:row.gender||'',dob:row.dob||'',address:row.address||''};const r=DS.createStudentAccount(data);success++;details.push({name:r.student.name,gr:r.student.grNumber,email:r.user.email,password:r.user.password});}catch(e){failed++;details.push({name:row.name,error:e.message});}});const log={id:`log-${Date.now()}`,total:preview.length,success,failed,timestamp:new Date().toISOString(),fileName};DS.addImportLog(log);setLogs(DS.getImportLogs());setPreview([]);setBusy(false);showToast(`Imported ${success} students · ${failed} failed`,success?'success':'error');fireConfetti();},700);};
+      return <div><div className="card card-gradient animate-fadeIn" style={{marginBottom:20}}><h2>Bulk Student Import</h2><p style={{opacity:.82,marginTop:6}}>Excel/CSV → validation → automatic GR → institutional email → account creation.</p></div><div className="card"><div className="upload-zone"><i className="fas fa-file-excel" style={{fontSize:46,color:'var(--primary)'}}/><h3 style={{marginTop:12}}>Drop Excel/CSV or browse</h3><p style={{color:'var(--text-secondary)',fontSize:12,marginTop:6}}>Required: Name, Phone · Optional: Class, Department, Semester, AdmissionYear, Roll/Sequence, Guardian, GuardianPhone, Gender, DOB, Address</p><input type="file" accept=".csv,.xlsx,.xls" onChange={e=>parseFile(e.target.files[0])} style={{marginTop:14}}/></div>{preview.length>0&&<div style={{marginTop:20}}><div className="card-header"><h3 className="card-title">Preview · {preview.length} valid rows</h3><button className="btn btn-success" onClick={importAll} disabled={busy}>{busy?'Importing...':'Import All'}</button></div><div className="table-container" style={{maxHeight:320}}><table><thead><tr>{Object.keys(preview[0]).map(k=><th key={k}>{k}</th>)}</tr></thead><tbody>{preview.slice(0,20).map((r,i)=><tr key={i}>{Object.values(r).map((v,j)=><td key={j}>{String(v)}</td>)}</tr>)}</tbody></table></div></div>}</div><div className="card" style={{marginTop:20}}><div className="card-header"><h3 className="card-title">Import Logs</h3></div><div className="table-container"><table><thead><tr><th>Date</th><th>File</th><th>Total</th><th>Success</th><th>Failed</th></tr></thead><tbody>{logs.map(l=><tr key={l.id}><td>{new Date(l.timestamp).toLocaleString()}</td><td>{l.fileName}</td><td>{l.total}</td><td><span className="badge badge-success">{l.success}</span></td><td><span className="badge badge-danger">{l.failed}</span></td></tr>)}</tbody></table></div></div></div>;
     }
+
 
     // ===================== AI ASSISTANT =====================
     function AIAssistantPage({ user }) {
@@ -3250,67 +2846,15 @@
 
     // ===================== STUDENTS =====================
     function StudentsPage({ onModal }) {
-      const [search, setSearch] = useState('');
-      const [selectedDept, setSelectedDept] = useState('ALL');
-      const students = (DS.getStudents() || []).filter(s=> {
-        const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.rollNo.toLowerCase().includes(search.toLowerCase()) || (s.grNumber && s.grNumber.toLowerCase().includes(search.toLowerCase()));
-        const matchesDept = selectedDept==='ALL' || s.department===selectedDept;
-        return matchesSearch && matchesDept;
-      });
-
-      const viewStudent = (student) => {
-        onModal({
-          isOpen: true, title: `${student.name} - Profile`, onClose: ()=>onModal(null),
-          children: (
-            <div>
-              <div style={{display:'flex',gap:'20px',marginBottom:'24px',alignItems:'center'}}>
-                <div style={{width:'80px',height:'80px',borderRadius:'50%',background:'var(--primary-gradient)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'32px',color:'white',fontWeight:800}}>{student.name.charAt(0)}</div>
-                <div><h2 style={{fontSize:'22px',fontWeight:800}}>{student.name}</h2><p style={{color:'var(--text-secondary)'}}><strong>GR:</strong> {student.grNumber} · {student.rollNo} · {DS.getClassById(student.classId)?.name}</p></div>
-              </div>
-              <div className="grid-2">
-                <div><label className="form-label">Department</label><div className="input" style={{marginBottom:'12px'}}>{DS.getDepartmentById(student.department)?.name || student.department}</div></div>
-                <div><label className="form-label">Semester</label><div className="input" style={{marginBottom:'12px'}}>{student.semester}</div></div>
-                <div><label className="form-label">CGPA</label><div className="input" style={{marginBottom:'12px'}}>{student.cgpa}</div></div>
-                <div><label className="form-label">Attendance</label><div className="input" style={{marginBottom:'12px'}}>{student.attendance}%</div></div>
-                <div><label className="form-label">Guardian</label><div className="input" style={{marginBottom:'12px'}}>{student.guardian}</div></div>
-                <div><label className="form-label">Phone</label><div className="input" style={{marginBottom:'12px'}}>{student.guardianPhone}</div></div>
-              </div>
-            </div>
-          )
-        });
-      };
-
-      return (
-        <div>
-          <div className="card animate-fadeIn" style={{marginBottom:'24px'}}>
-            <div style={{display:'flex',gap:'12px',flexWrap:'wrap'}}>
-              <div style={{flex:1,minWidth:'200px',display:'flex',gap:'8px'}}>
-                <input className="input" placeholder="Search by name, GR, roll..." value={search} onChange={e=>setSearch(e.target.value)} />
-                <button className="btn btn-primary"><i className="fas fa-search"></i></button>
-              </div>
-              <select className="input" style={{width:'auto'}} value={selectedDept} onChange={e=>setSelectedDept(e.target.value)}>
-                <option value="ALL">All Departments</option>{(DS.getDepartments() || []).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <button className="btn btn-primary" onClick={()=>showToast('Add student form opened','info')}><i className="fas fa-plus"></i> Add Student</button>
-            </div>
-          </div>
-          <div className="card animate-fadeIn">
-            <div className="table-container">
-              <table><thead><tr><th>Student</th><th>GR</th><th>Roll No</th><th>Class</th><th>Attendance</th><th>Quiz Avg</th><th>CGPA</th><th>Actions</th></tr></thead>
-              <tbody>{students.map(s=> (
-                <tr key={s.id}><td className="td-name"><div className="td-avatar">{s.name.charAt(0)}</div><div className="td-info"><span className="name">{s.name}</span><span className="sub">{DS.getDepartmentById(s.department)?.code || s.department}</span></div></td>
-                <td><span className="badge badge-primary" style={{fontSize:'10px'}}>{s.grNumber}</span></td>
-                <td>{s.rollNo}</td><td>{DS.getClassById(s.classId)?.name}</td>
-                <td><span className={`badge ${s.attendance>=75?'badge-success':'badge-danger'}`}>{s.attendance}%</span></td>
-                <td>{s.quizAverage}%</td><td>{s.cgpa}</td>
-                <td><button className="btn btn-sm btn-secondary" onClick={()=>viewStudent(s)}><i className="fas fa-eye"></i></button></td></tr>
-              ))}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
+      const [search,setSearch]=useState(''); const [dept,setDept]=useState('ALL'); const [showAdd,setShowAdd]=useState(false); const [form,setForm]=useState({name:'',phone:'',classId:'cls1',department:'d1',semester:5,admissionYear:new Date().getFullYear(),sequence:'',guardian:'',guardianPhone:'',gender:'',dob:'',address:''});
+      const [created,setCreated]=useState(null);
+      const students=DS.getStudents().filter(s=>(!search||[s.name,s.rollNo,s.grNumber,s.email].join(' ').toLowerCase().includes(search.toLowerCase()))&&(dept==='ALL'||s.department===dept));
+      const submit=()=>{try{const r=DS.createStudentAccount(form);setCreated(r);showToast(`Student created · ${r.student.grNumber}`,'success');fireConfetti();}catch(e){showToast(e.message,'error');}};
+      return <div><div className="card animate-fadeIn" style={{marginBottom:20}}><div style={{display:'flex',gap:10,flexWrap:'wrap'}}><input className="input" style={{flex:1,minWidth:220}} placeholder="Search name, GR, roll..." value={search} onChange={e=>setSearch(e.target.value)}/><select className="input" style={{width:'auto'}} value={dept} onChange={e=>setDept(e.target.value)}><option value="ALL">All Departments</option>{DS.getDepartments().map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select><button className="btn btn-primary" onClick={()=>{setCreated(null);setShowAdd(true)}}><i className="fas fa-user-plus"/> Add Student</button></div></div><div className="card"><div className="card-header"><h3 className="card-title">Student Directory</h3><span className="badge badge-primary">{students.length}</span></div><div className="table-container"><table><thead><tr><th>Student</th><th>GR</th><th>Roll</th><th>Class</th><th>Attendance</th><th>Quiz</th><th>CGPA</th><th/></tr></thead><tbody>{students.map(s=><tr key={s.id}><td className="td-name"><div className="td-avatar">{s.name.charAt(0)}</div><div className="td-info"><span className="name">{s.name}</span><span className="sub">{DS.getDepartmentById(s.department)?.code||s.department}</span></div></td><td><span className="badge badge-primary">{s.grNumber}</span></td><td>{s.rollNo}</td><td>{DS.getClassById(s.classId)?.name||'-'}</td><td><span className={`badge ${s.attendance>=75?'badge-success':'badge-danger'}`}>{s.attendance}%</span></td><td>{s.quizAverage}%</td><td>{s.cgpa||0}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>onModal({isOpen:true,title:`${s.name} · Student Profile`,onClose:()=>onModal(null),children:<div><div className="profile-hero"><div className="profile-hero-inner"><div className="profile-avatar-xl">{s.name.charAt(0)}</div><div className="profile-hero-info"><div className="profile-hero-name">{s.name}</div><div className="profile-hero-meta"><span>GR {s.grNumber}</span><span>Roll {s.rollNo}</span><span>{DS.getClassById(s.classId)?.name}</span></div></div></div></div><div className="grid-2"><div className="profile-field"><div className="field-label">Email</div><div className="field-value">{DS.getUserById(s.userId)?.email||'-'}</div></div><div className="profile-field"><div className="field-label">Guardian</div><div className="field-value">{s.guardian||'-'}</div></div><div className="profile-field"><div className="field-label">Guardian Phone</div><div className="field-value">{s.guardianPhone||'-'}</div></div><div className="profile-field"><div className="field-label">Admission Year</div><div className="field-value">{s.admissionYear}</div></div></div></div>})}><i className="fas fa-eye"/></button></td></tr>)}</tbody></table></div></div>{showAdd&&<Modal isOpen={showAdd} onClose={()=>setShowAdd(false)} title="Add New Student · Automatic GR & Login" footer={created?<button className="btn btn-primary" onClick={()=>setShowAdd(false)}>Done</button>:<><button className="btn btn-secondary" onClick={()=>setShowAdd(false)}>Cancel</button><button className="btn btn-primary" onClick={submit}>Create Student Account</button></>}>
+        {created?<div className="card card-gradient"><h3>Account Created ✓</h3><p style={{marginTop:10}}>Student: {created.student.name}</p><p>GR Number: <strong>{created.student.grNumber}</strong></p><p>Email: <strong>{created.user.email}</strong></p><p>Initial Password: <strong>{created.user.password}</strong></p><p style={{marginTop:12,fontSize:12,opacity:.85}}>For production, require a password change on first login and deliver credentials through a secure institutional channel.</p></div>:<div className="grid-2"><div className="form-group"><label className="form-label">Full Name *</label><input className="input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div className="form-group"><label className="form-label">Phone *</label><input className="input" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></div><div className="form-group"><label className="form-label">Admission Year *</label><input type="number" className="input" value={form.admissionYear} onChange={e=>setForm({...form,admissionYear:e.target.value})}/></div><div className="form-group"><label className="form-label">Roll / Sequence (optional)</label><input type="number" className="input" placeholder="036" value={form.sequence} onChange={e=>setForm({...form,sequence:e.target.value})}/></div><div className="form-group"><label className="form-label">Department</label><select className="input" value={form.department} onChange={e=>setForm({...form,department:e.target.value})}>{DS.getDepartments().map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div><div className="form-group"><label className="form-label">Class</label><select className="input" value={form.classId} onChange={e=>setForm({...form,classId:e.target.value})}>{DS.getClasses().map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="form-group"><label className="form-label">Semester</label><input type="number" className="input" value={form.semester} onChange={e=>setForm({...form,semester:e.target.value})}/></div><div className="form-group"><label className="form-label">Gender</label><select className="input" value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></select></div><div className="form-group"><label className="form-label">Guardian</label><input className="input" value={form.guardian} onChange={e=>setForm({...form,guardian:e.target.value})}/></div><div className="form-group"><label className="form-label">Guardian Phone</label><input className="input" value={form.guardianPhone} onChange={e=>setForm({...form,guardianPhone:e.target.value})}/></div><div className="form-group"><label className="form-label">Date of Birth</label><input type="date" className="input" value={form.dob} onChange={e=>setForm({...form,dob:e.target.value})}/></div><div className="form-group"><label className="form-label">Address</label><input className="input" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></div><div style={{gridColumn:'1/-1',padding:14,borderRadius:12,background:'var(--bg-primary)',color:'var(--text-secondary)',fontSize:12}}><i className="fas fa-magic" style={{color:'var(--primary)'}}/> The system will automatically create <strong>GRYYYYNNN</strong>, an institutional email like <strong>name@{DS.getSettings().schoolDomain}</strong>, and initial password equal to the GR number.</div></div>}
+      </Modal>}</div>;
     }
+
 
     // ===================== TEACHERS =====================
     function TeachersPage() {
@@ -3839,7 +3383,7 @@
           <div className={`sidebar ${sidebarOpen?'open':''}`}>
             <div className="sidebar-brand">
               <div className="brand-icon"><i className="fas fa-graduation-cap"></i></div>
-              <div><h2>EDUTrack AI</h2><small>Pro v4.0 · Academic OS</small></div>
+              <div><h2>EDUTrack AI</h2><small>Pro v5.0 · Digital Campus ERP</small></div>
             </div>
             <nav className="sidebar-nav">
               {getNavItems().map((section, si) => (
