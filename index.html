@@ -472,6 +472,7 @@
     @media(max-width:900px){.quiz-builder-grid{grid-template-columns:1fr}}
     @media(max-width:600px){.payment-method-grid{grid-template-columns:1fr}}
   </style>
+<base target="_blank">
 </head>
 <body>
   <div id="root"></div>
@@ -2430,9 +2431,7 @@
       };
       const ReceiptModal=({tx})=><Modal isOpen={!!tx} onClose={()=>setShowReceipt(null)} title={`E-Receipt · ${tx.receiptNumber}`} footer={<div style={{display:'flex',gap:8}}><button className="btn btn-secondary" onClick={()=>printReceipt(tx,'STUDENT')}>Print / Save PDF</button><button className="btn btn-primary" onClick={()=>setShowReceipt(null)}>Close</button></div>}><div className="receipt-box"><div style={{textAlign:'center'}}><div style={{fontSize:24,fontWeight:800}}>{DS.getSettings().institutionName}</div><div style={{fontSize:12,color:'var(--text-secondary)'}}>EDUTrack Pro · Official E-Receipt</div></div><div className="grid-2" style={{marginTop:20}}><div><label className="form-label">Student</label><strong>{DS.getStudentById(tx.studentId)?.name}</strong></div><div><label className="form-label">GR Number</label><strong>{tx.grNumber}</strong></div><div><label className="form-label">Receipt</label><strong>{tx.receiptNumber}</strong></div><div><label className="form-label">Transaction</label><strong>{tx.transactionId}</strong></div><div><label className="form-label">Fee Heads</label><strong>{tx.feeHeads?.join(', ')||tx.feeHead}</strong></div><div><label className="form-label">Method</label><strong>{getLabel(tx.paymentMode)}</strong></div></div><div style={{textAlign:'center',marginTop:20,paddingTop:18,borderTop:'2px dashed var(--border-color)'}}><div style={{fontSize:12,color:'var(--text-light)'}}>Amount Paid</div><div style={{fontSize:34,fontWeight:900,color:'var(--primary)'}}>₹{Number(tx.amountPaid).toLocaleString('en-IN')}</div><span className="badge badge-success">PAID</span></div></div></Modal>;
 
-      if(effectiveRole==='STUDENT') return <div><div className="stats-grid"><StatCard icon="fa-rupee-sign" iconClass="green" label="Total Paid" value={totalPaid} delay={1}/><StatCard icon="fa-exclamation-triangle" iconClass="red" label="Pending" value={pendingTotal} delay={2}/><StatCard icon="fa-receipt" iconClass="purple" label="Transactions" value={myTxs.length} delay={3}/><StatCard icon="fa-percentage" iconClass="blue" label="Payment Progress" value={feeStructure?Math.round(totalPaid/feeStructure.totalAmount*100):0} suffix="%" delay={4}/></div><div className="card animate-fadeIn" style={{marginBottom:20}}><div className="card-header"><h3 className="card-title"><i className="fas fa-file-invoice"/> Fee Card · Semester {student?.semester}</h3><span className={`badge ${pendingTotal?'badge-warning':'badge-success'}`}>{pendingTotal?'Payment Due':'Fully Paid'}</span></div>{balances.map(f=><div className="fee-select-row" key={f.head}><div><span className={`fee-head-badge ${f.mandatory?'mandatory':'optional'}`}>{f.head}</span><div style={{fontSize:11,color:'var(--text-light)',marginTop:5}}>{f.mandatory?'Mandatory':'Optional'} · Paid ₹{f.paid.toLocaleString('en-IN')} / ₹{f.amount.toLocaleString('en-IN')}</div></div><strong>{f.due>0?`₹${f.due.toLocaleString('en-IN')} due`:'✓ Paid'}</strong></div>)}<div style={{marginTop:18,padding:20,borderRadius:14,background:'var(--bg-primary)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}><div><div style={{fontSize:12,color:'var(--text-light)'}}>Outstanding Balance</div><div style={{fontSize:30,fontWeight:900}}>₹{pendingTotal.toLocaleString('en-IN')}</div></div>{pendingTotal>0&&<button className="btn btn-primary btn-lg" onClick={openPay}><i className="fas fa-credit-card"/> Pay Now</button>}</div></div><div className="card"><div className="card-header"><h3 className="card-title"><i className="fas fa-history"/> Payment History</h3></div><div className="table-container"><table><thead><tr><th>Date</th><th>Receipt</th><th>Fee Heads</th><th>Amount</th><th>Method</th><th>Status</th><th/></tr></thead><tbody>{myTxs.map(t=><tr key={t.id}><td>{new Date(t.paidAt).toLocaleDateString()}</td><td>{t.receiptNumber}</td><td>{t.feeHeads?.join(', ')||t.feeHead}</td><td><strong>₹{Number(t.amountPaid).toLocaleString('en-IN')}</strong></td><td>{getLabel(t.paymentMode)}</td><td><span className="badge badge-success">{t.status}</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>setShowReceipt(t)}><i className="fas fa-receipt"/></button></td></tr>)}</tbody></table></div></div>{showPay&&<Modal isOpen={showPay} onClose={()=>setShowPay(false)} title={`Pay Fees · Step ${paymentStep} of 2`} footer={paymentStep===1?<><button className="btn btn-secondary" onClick={()=>setShowPay(false)}>Cancel</button><button className="btn btn-primary" disabled={!selectedTotal} onClick={()=>setPaymentStep(2)}>Continue · ₹{selectedTotal.toLocaleString('en-IN')}</button></>:<><button className="btn btn-secondary" onClick={()=>setPaymentStep(1)}>Back</button><button className="btn btn-success" onClick={completePayment}><i className="fas fa-lock"/> Confirm Payment · ₹{selectedTotal.toLocaleString('en-IN')}</button></>}>
-        {paymentStep===1?<div><p style={{color:'var(--text-secondary)',marginBottom:12}}>Select the outstanding fee heads you want to pay.</p>{balances.filter(f=>f.due>0).map(f=><div key={f.head} className={`fee-select-row ${selectedHeads.includes(f.head)?'selected':''}`} onClick={()=>toggleHead(f.head)}><div style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={selectedHeads.includes(f.head)} onChange={()=>toggleHead(f.head)} onClick={e=>e.stopPropagation()}/><div><strong>{f.head}</strong><div style={{fontSize:11,color:'var(--text-light)'}}>Outstanding ₹{f.due.toLocaleString('en-IN')}</div></div></div><strong>₹{f.due.toLocaleString('en-IN')}</strong></div>)}<div style={{marginTop:16,textAlign:'right',fontSize:18,fontWeight:800}}>Total: ₹{selectedTotal.toLocaleString('en-IN')}</div></div>:<div><div className="receipt-box" style={{marginBottom:16}}><strong>Amount to pay</strong><div style={{fontSize:30,fontWeight:900,color:'var(--primary)'}}>₹{selectedTotal.toLocaleString('en-IN')}</div><div style={{fontSize:12,color:'var(--text-light)'}}>{selectedHeads.join(', ')}</div></div><label className="form-label">Payment Method</label><div className="payment-method-grid">{paymentMethods.map(([m,ic])=><div key={m} className={`payment-method-card ${method===m?'active':''}`} onClick={()=>setMethod(m)}><i className={`fas ${ic}`}/><div><strong>{getLabel(m)}</strong><div style={{fontSize:10,color:'var(--text-light)'}}>{['UPI','CREDIT_CARD','DEBIT_CARD','ACH','ECHECK','PREPAID_CARD'].includes(m)?'Online / gateway-ready':'Institution recorded method'}</div></div></div>)}</div><p style={{fontSize:12,color:'var(--text-light)',marginTop:12}}><i className="fas fa-shield-alt"/> Gateway-agnostic demo. Production payment success must be verified server-side before marking the transaction paid.</p></div>}
-      </Modal>}{showReceipt&&<ReceiptModal tx={showReceipt}/>}</div>;
+      if(effectiveRole==='STUDENT') return <div><div className="stats-grid"><StatCard icon="fa-rupee-sign" iconClass="green" label="Total Paid" value={totalPaid} delay={1}/><StatCard icon="fa-exclamation-triangle" iconClass="red" label="Pending" value={pendingTotal} delay={2}/><StatCard icon="fa-receipt" iconClass="purple" label="Transactions" value={myTxs.length} delay={3}/><StatCard icon="fa-percentage" iconClass="blue" label="Payment Progress" value={feeStructure?Math.round(totalPaid/feeStructure.totalAmount*100):0} suffix="%" delay={4}/></div><div className="card animate-fadeIn" style={{marginBottom:20}}><div className="card-header"><h3 className="card-title"><i className="fas fa-file-invoice"/> Fee Card · Semester {student?.semester}</h3><span className={`badge ${pendingTotal?'badge-warning':'badge-success'}`}>{pendingTotal?'Payment Due':'Fully Paid'}</span></div>{balances.map(f=><div className="fee-select-row" key={f.head}><div><span className={`fee-head-badge ${f.mandatory?'mandatory':'optional'}`}>{f.head}</span><div style={{fontSize:11,color:'var(--text-light)',marginTop:5}}>{f.mandatory?'Mandatory':'Optional'} · Paid ₹{f.paid.toLocaleString('en-IN')} / ₹{f.amount.toLocaleString('en-IN')}</div></div><strong>{f.due>0?`₹${f.due.toLocaleString('en-IN')} due`:'✓ Paid'}</strong></div>)}<div style={{marginTop:18,padding:20,borderRadius:14,background:'var(--bg-primary)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}><div><div style={{fontSize:12,color:'var(--text-light)'}}>Outstanding Balance</div><div style={{fontSize:30,fontWeight:900}}>₹{pendingTotal.toLocaleString('en-IN')}</div></div></div></div><div className="card"><div className="card-header"><h3 className="card-title"><i className="fas fa-history"/> Payment History</h3></div><div className="table-container"><table><thead><tr><th>Date</th><th>Receipt</th><th>Fee Heads</th><th>Amount</th><th>Method</th><th>Status</th><th/></tr></thead><tbody>{myTxs.map(t=><tr key={t.id}><td>{new Date(t.paidAt).toLocaleDateString()}</td><td>{t.receiptNumber}</td><td>{t.feeHeads?.join(', ')||t.feeHead}</td><td><strong>₹{Number(t.amountPaid).toLocaleString('en-IN')}</strong></td><td>{getLabel(t.paymentMode)}</td><td><span className="badge badge-success">{t.status}</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>setShowReceipt(t)}><i className="fas fa-receipt"/></button></td></tr>)}</tbody></table></div></div>{showReceipt&&<ReceiptModal tx={showReceipt}/>}</div>;
 
       if(effectiveRole==='ACCOUNTANT'){
         const filtered=allTxs.filter(t=>(filterMethod==='ALL'||t.paymentMode===filterMethod)&&(!search||String(t.grNumber).toLowerCase().includes(search.toLowerCase())||String(DS.getStudentById(t.studentId)?.name||'').toLowerCase().includes(search.toLowerCase())));
@@ -3277,7 +3276,184 @@
       );
     }
 
-    // ===================== MAIN APP =====================
+    
+    // ===================== ASSIGNMENTS =====================
+    function AssignmentsPage({ user, role, viewAs }) {
+      const effectiveRole = viewAs || role;
+      const student = DS.getStudentByUserId(user.id) || (effectiveRole==='STUDENT' && role!=='STUDENT' ? DS.getStudents()[0] : null);
+      const [showAdd, setShowAdd] = useState(false);
+      const [newAssignment, setNewAssignment] = useState({title:'', description:'', dueDate:'', maxMarks:50, subjectId:'', classId:'cls1'});
+
+      const assignments = (effectiveRole==='STUDENT' && student) 
+        ? DS.getAssignments(student.classId) 
+        : DS.getAssignments();
+
+      const handleCreate = () => {
+        if(!newAssignment.title.trim() || !newAssignment.dueDate) { showToast('Title and due date required','error'); return; }
+        const all = DS.getCollection('assignments');
+        all.push({
+          id:'as-'+Date.now(), ...newAssignment, teacherId:user.id, status:'ACTIVE', createdAt:new Date().toISOString()
+        });
+        DS.setCollection('assignments', all);
+        setShowAdd(false); 
+        setNewAssignment({title:'', description:'', dueDate:'', maxMarks:50, subjectId:'', classId:'cls1'});
+        showToast('Assignment created','success');
+      };
+
+      return (
+        <div>
+          {effectiveRole!=='STUDENT' && (
+            <div style={{display:'flex',justifyContent:'flex-end',marginBottom:'24px'}}>
+              <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><i className="fas fa-plus"></i> New Assignment</button>
+            </div>
+          )}
+          <div className="grid-2">
+            {assignments.map(a => {
+              const sub = DS.getSubjectById(a.subjectId);
+              const cls = DS.getClassById(a.classId);
+              const submission = student ? DS.getSubmissions(a.id, student.id)[0] : null;
+              return (
+                <div key={a.id} className="card animate-fadeIn">
+                  <div className="card-header">
+                    <h3 className="card-title">{a.title}</h3>
+                    <span className={`badge ${a.status==='ACTIVE'?'badge-success':'badge-secondary'}`}>{a.status}</span>
+                  </div>
+                  <p style={{color:'var(--text-secondary)',fontSize:'14px',marginBottom:'12px'}}>{a.description}</p>
+                  <div style={{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'12px'}}>
+                    <span className="badge badge-secondary">{sub?.name || 'Subject'}</span>
+                    <span className="badge badge-info">{cls?.name || 'Class'}</span>
+                    <span className="badge badge-warning"><i className="fas fa-clock"></i> Due: {a.dueDate}</span>
+                    <span className="badge badge-primary">Max: {a.maxMarks}</span>
+                  </div>
+                  {effectiveRole==='STUDENT' && (
+                    <div style={{marginTop:'12px',padding:'12px',background:'var(--bg-primary)',borderRadius:'10px'}}>
+                      {submission ? (
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <span style={{fontSize:'13px',fontWeight:600}}><i className="fas fa-check-circle" style={{color:'var(--success)'}}></i> Submitted</span>
+                          <span style={{fontSize:'12px',color:'var(--text-light)'}}>{submission.status}{submission.marks!==null?` · ${submission.marks}/${a.maxMarks}`:''}</span>
+                        </div>
+                      ) : (
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <span style={{fontSize:'13px',color:'var(--warning)',fontWeight:600}}><i className="fas fa-hourglass-half"></i> Pending</span>
+                          <span style={{fontSize:'12px',color:'var(--text-light)'}}>Not submitted yet</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {effectiveRole!=='STUDENT' && (
+                    <div style={{marginTop:'12px',fontSize:'12px',color:'var(--text-light)'}}>
+                      Submissions: {DS.getSubmissions(a.id).length}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {assignments.length===0 && <EmptyState icon="fa-tasks" title="No assignments" description="No assignments found for your view." />}
+          {showAdd && (
+            <Modal isOpen={showAdd} onClose={()=>setShowAdd(false)} title="New Assignment" footer={<><button className="btn btn-secondary" onClick={()=>setShowAdd(false)}>Cancel</button><button className="btn btn-primary" onClick={handleCreate}>Create</button></>}>
+              <div className="form-group"><label className="form-label">Title</label><input className="input" value={newAssignment.title} onChange={e=>setNewAssignment({...newAssignment,title:e.target.value})} /></div>
+              <div className="form-group"><label className="form-label">Description</label><textarea className="input" rows="3" value={newAssignment.description} onChange={e=>setNewAssignment({...newAssignment,description:e.target.value})}></textarea></div>
+              <div className="grid-2">
+                <div className="form-group"><label className="form-label">Subject</label><select className="input" value={newAssignment.subjectId} onChange={e=>setNewAssignment({...newAssignment,subjectId:e.target.value})}><option value="">Select</option>{DS.getSubjects().map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Class</label><select className="input" value={newAssignment.classId} onChange={e=>setNewAssignment({...newAssignment,classId:e.target.value})}>{DS.getClasses().map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+              </div>
+              <div className="grid-2">
+                <div className="form-group"><label className="form-label">Due Date</label><input type="date" className="input" value={newAssignment.dueDate} onChange={e=>setNewAssignment({...newAssignment,dueDate:e.target.value})} /></div>
+                <div className="form-group"><label className="form-label">Max Marks</label><input type="number" className="input" value={newAssignment.maxMarks} onChange={e=>setNewAssignment({...newAssignment,maxMarks:Number(e.target.value)||0})} /></div>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    // ===================== GRADES =====================
+    function GradesPage({ user, role, viewAs }) {
+      const effectiveRole = viewAs || role;
+      const student = DS.getStudentByUserId(user.id) || (effectiveRole==='STUDENT' && role!=='STUDENT' ? DS.getStudents()[0] : null);
+      const [selectedStudent, setSelectedStudent] = useState(student?.id || '');
+
+      const grades = effectiveRole==='STUDENT' && student 
+        ? DS.getGrades(student.id) 
+        : selectedStudent ? DS.getGrades(selectedStudent) : DS.getCollection('grades');
+
+      return (
+        <div>
+          {effectiveRole!=='STUDENT' && (
+            <div style={{marginBottom:'24px'}}>
+              <select className="input" style={{width:'auto',minWidth:'240px'}} value={selectedStudent} onChange={e=>setSelectedStudent(e.target.value)}>
+                <option value="">All Students</option>
+                {DS.getStudents().map(s=><option key={s.id} value={s.id}>{s.name} ({s.grNumber})</option>)}
+              </select>
+            </div>
+          )}
+          <div className="card animate-fadeIn">
+            <div className="card-header"><h3 className="card-title"><i className="fas fa-chart-bar"></i> Gradebook</h3></div>
+            <div className="table-container">
+              <table>
+                <thead><tr><th>Subject</th><th>Internal 1</th><th>Internal 2</th><th>Assignment</th><th>Mid Term</th><th>Final</th><th>Total</th><th>Grade</th></tr></thead>
+                <tbody>
+                  {grades.map(g => {
+                    const sub = DS.getSubjectById(g.subjectId);
+                    const stu = DS.getStudentById(g.studentId);
+                    const total = (g.internal1||0)+(g.internal2||0)+(g.assignment||0)+(g.midTerm||0)+(g.final||0);
+                    const max = sub?.credits ? sub.credits*25 : 100;
+                    const pct = max>0?Math.round((total/max)*100):0;
+                    const grade = pct>=90?'A+':pct>=80?'A':pct>=70?'B':pct>=60?'C':pct>=50?'D':'F';
+                    return (
+                      <tr key={g.id}>
+                        <td><strong>{sub?.name||'-'}</strong>{stu&&effectiveRole!=='STUDENT'?<div style={{fontSize:11,color:'var(--text-light)'}}>{stu.name}</div>:null}</td>
+                        <td>{g.internal1??'-'}</td><td>{g.internal2??'-'}</td><td>{g.assignment??'-'}</td><td>{g.midTerm??'-'}</td><td>{g.final??'-'}</td>
+                        <td><strong>{total}/{max}</strong></td>
+                        <td><span className={`badge ${grade==='F'?'badge-danger':grade.startsWith('A')?'badge-success':'badge-primary'}`}>{grade}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {grades.length===0 && <EmptyState icon="fa-chart-bar" title="No grades" description="No grade records found." />}
+          </div>
+        </div>
+      );
+    }
+
+    // ===================== LIBRARY =====================
+    function LibraryPage({ user, role, viewAs }) {
+      const [search, setSearch] = useState('');
+      const books = DS.getLibraryBooks(search);
+
+      return (
+        <div>
+          <div style={{display:'flex',gap:'12px',marginBottom:'24px'}}>
+            <div className="search-bar" style={{flex:1}}>
+              <i className="fas fa-search"></i>
+              <input placeholder="Search by title or author..." value={search} onChange={e=>setSearch(e.target.value)} style={{border:'none',background:'none',outline:'none',width:'100%'}} />
+            </div>
+          </div>
+          <div className="grid-3">
+            {books.map(b => (
+              <div key={b.id} className="card animate-fadeIn">
+                <div className="card-header"><h3 className="card-title"><i className="fas fa-book"></i> {b.title}</h3><span className={`badge ${b.available?'badge-success':'badge-danger'}`}>{b.available?'Available':'Issued'}</span></div>
+                <div style={{fontSize:'13px',color:'var(--text-secondary)',marginBottom:'8px'}}>{b.author}</div>
+                <div style={{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'12px'}}>
+                  <span className="badge badge-secondary">{b.category}</span>
+                  <span className="badge badge-info">ISBN: {b.isbn}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'12px',color:'var(--text-light)'}}>
+                  <span>Total: {b.total}</span>
+                  <span>Issued: {b.issued}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {books.length===0 && <EmptyState icon="fa-book" title="No books found" description="Try a different search term." />}
+        </div>
+      );
+    }
+
+// ===================== MAIN APP =====================
     function App() {
       const [user, setUser] = useState(DS.getCurrentUser());
       const [role, setRole] = useState(DS.getCurrentRole());
