@@ -2,7 +2,7 @@
 
 > Next-Generation Academic Operating System with AI-Powered Insights
 
-[![Live Demo](https://riishilmmehta.github.io/edutrack-ai/)
+Live Demo (https://riishilmmehta.github.io/edutrack-ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 📋 Overview
