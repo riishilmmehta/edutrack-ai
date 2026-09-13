@@ -2753,7 +2753,9 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
     
     // ===================== EDUTrack Production API Client =====================
     window.EduTrackAPI = {
-      baseUrl: (window.location.port === "5000" || window.location.pathname.startsWith("/api")) ? "" : "http://localhost:5000",
+      baseUrl: (window.location.port === "3000" || window.location.port === "5000" || window.location.pathname.startsWith("/api"))
+        ? ""
+        : (localStorage.getItem("edutrack_api_url") || "http://localhost:3000"),
       getToken() {
         return localStorage.getItem("edutrack_jwt_token") || sessionStorage.getItem("edutrack_jwt_token");
       },
@@ -2798,7 +2800,61 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
         });
       },
       async fetchNotifications() {
-        return this.request("/api/notifications");
+        const res = await this.request("/api/notifications");
+        if (res && res.success && Array.isArray(res.notifications)) {
+          const current = (typeof DS !== 'undefined') ? (DS.getCollection('notifications') || []) : [];
+          const existingIds = new Set(current.map(n => String(n._id || n.id)));
+          res.notifications.forEach(apiNotif => {
+            const id = String(apiNotif._id || apiNotif.id);
+            if (!existingIds.has(id)) {
+              current.unshift({
+                id: id,
+                userId: apiNotif.userId,
+                title: apiNotif.title,
+                message: apiNotif.message,
+                read: !!apiNotif.read,
+                type: apiNotif.type,
+                createdAt: apiNotif.createdAt
+              });
+              existingIds.add(id);
+            }
+          });
+          if (typeof DS !== 'undefined') DS.setCollection('notifications', current);
+        }
+        return res;
+      },
+      async markNotificationRead(id) {
+        return this.request(`/api/notifications/${id}/read`, { method: "PATCH" });
+      },
+      async getAttendance(params = {}) {
+        const qs = new URLSearchParams(params).toString();
+        return this.request("/api/attendance" + (qs ? "?" + qs : ""));
+      },
+      async markAttendance(records) {
+        return this.request("/api/attendance/mark", {
+          method: "POST",
+          body: JSON.stringify({ records })
+        });
+      },
+      async getGrades(params = {}) {
+        const qs = new URLSearchParams(params).toString();
+        return this.request("/api/grades" + (qs ? "?" + qs : ""));
+      },
+      async recordGrade(gradeData) {
+        return this.request("/api/grades", {
+          method: "POST",
+          body: JSON.stringify(gradeData)
+        });
+      },
+      async getFees(params = {}) {
+        const qs = new URLSearchParams(params).toString();
+        return this.request("/api/fees" + (qs ? "?" + qs : ""));
+      },
+      async payFee(feeId, paymentReference) {
+        return this.request("/api/fees/pay", {
+          method: "POST",
+          body: JSON.stringify({ feeId, paymentReference })
+        });
       }
     };
 
@@ -10136,6 +10192,13 @@ function App() {
           setTheme('dark'); document.documentElement.setAttribute('data-theme', 'dark');
         }
         if (user) {
+          if (window.EduTrackAPI && window.EduTrackAPI.getToken()) {
+            window.EduTrackAPI.fetchNotifications().then(res => {
+              if (res && res.notifications) {
+                setNotifCount(res.notifications.filter(n => !n.read).length);
+              }
+            }).catch(() => {});
+          }
           const notifs = DS.getNotifications(user.id) || [];
           setNotifCount(notifs.filter(n=>!n.read).length);
         }
