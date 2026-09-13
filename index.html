@@ -255,8 +255,88 @@
     .table-container .td-info .name { font-weight:700; color:var(--text-primary); }
     .table-container .td-info .sub { font-size:12px; color:var(--text-light); font-weight:500; }
 
-    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(8px); animation:fadeIn 0.3s; }
-    .modal-content { background:var(--bg-card); border-radius:var(--radius-lg); max-width:650px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-xl); animation:scaleIn 0.3s; border:1px solid var(--border-color); }
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(8px); animation:fadeIn 0.3s; }
+    .modal-content { background:var(--bg-card, #ffffff); color:var(--text-primary, #0f172a); border-radius:var(--radius-lg); max-width:650px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-xl); animation:scaleIn 0.3s; border:1px solid var(--border-color, #e2e8f0); }
+    .modal-content label,
+    .modal-content .form-group label {
+      color: var(--text-primary, #0f172a) !important;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: none;
+      letter-spacing: normal;
+      margin-bottom: 6px;
+      display: block;
+    }
+    .modal-content .input,
+    .modal-content select.input {
+      background: var(--bg-secondary, #ffffff) !important;
+      border: 1.5px solid var(--border-color, #cbd5e1) !important;
+      color: var(--text-primary, #0f172a) !important;
+      font-size: 13.5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .modal-content .input::placeholder {
+      color: var(--text-light, #94a3b8) !important;
+      opacity: 1;
+    }
+    .modal-content .input:focus {
+      border-color: var(--primary, #6366f1) !important;
+      background: #ffffff !important;
+      box-shadow: 0 0 0 4px rgba(99,102,241,0.15) !important;
+    }
+    .modal-content .input:disabled {
+      background: var(--border-light, #f1f5f9) !important;
+      color: var(--text-secondary, #475569) !important;
+      border-color: var(--border-color, #cbd5e1) !important;
+      opacity: 1 !important;
+    }
+    .modal-content .modal-param-card {
+      background: var(--bg-primary, #f8fafc) !important;
+      border: 1.5px solid var(--border-color, #e2e8f0) !important;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .modal-content .modal-info-banner {
+      background: rgba(99,102,241,0.08) !important;
+      border: 1px dashed var(--primary, #6366f1) !important;
+      color: var(--text-primary, #1e293b) !important;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+    [data-theme="dark"] .modal-content {
+      background: #1e293b !important;
+      color: #f8fafc !important;
+      border-color: #334155 !important;
+    }
+    [data-theme="dark"] .modal-content label,
+    [data-theme="dark"] .modal-content .form-group label {
+      color: #f1f5f9 !important;
+    }
+    [data-theme="dark"] .modal-content .input,
+    [data-theme="dark"] .modal-content select.input {
+      background: #0f172a !important;
+      border-color: #334155 !important;
+      color: #f8fafc !important;
+    }
+    [data-theme="dark"] .modal-content .input::placeholder {
+      color: #64748b !important;
+    }
+    [data-theme="dark"] .modal-content .input:disabled {
+      background: #1e293b !important;
+      color: #94a3b8 !important;
+      border-color: #334155 !important;
+    }
+    [data-theme="dark"] .modal-content .modal-param-card {
+      background: rgba(15,23,42,0.6) !important;
+      border-color: #334155 !important;
+    }
+    [data-theme="dark"] .modal-content .modal-info-banner {
+      background: rgba(99,102,241,0.15) !important;
+      color: #e2e8f0 !important;
+    }
     .modal-header { padding:24px 28px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; }
     .modal-header h3 { font-size:18px; font-weight:700; }
     .modal-body { padding:28px; }
@@ -1253,7 +1333,13 @@
       }
 
       login(email, password, role) {
-        const user = this.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase() && u.role === role);
+        const query = (email || '').trim().toLowerCase();
+        const user = this.getUsers().find(u => 
+          ((u.email && u.email.toLowerCase() === query) ||
+           (u.institutionalEmail && u.institutionalEmail.toLowerCase() === query) ||
+           (u.grNumber && u.grNumber.toLowerCase() === query)) && 
+          u.role === role
+        );
         if (!user) return { success: false, error: 'User not found. Check email and role.' };
         if (password !== user.password) return { success: false, error: 'Invalid password.' };
         localStorage.setItem('edutrack_currentUser', JSON.stringify(user));
@@ -2920,6 +3006,26 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
             };
           }
           if (resData && resData.success) {
+            if (typeof DS !== 'undefined' && DS.addUser && resData.user) {
+              try {
+                const existing = DS.getUsers().find(u => u.email.toLowerCase() === resData.user.email.toLowerCase());
+                if (!existing) {
+                  DS.addUser({
+                    id: resData.user.id || Date.now(),
+                    name: resData.user.name,
+                    email: resData.user.email,
+                    institutionalEmail: resData.user.institutionalEmail,
+                    grNumber: resData.user.grNumber,
+                    role: resData.user.role,
+                    password: resData.temporaryPassword || 'password',
+                    status: resData.user.status || 'ACTIVE',
+                    mustChangePassword: resData.user.mustChangePassword ?? true
+                  });
+                }
+              } catch (e) {
+                console.warn("DS registration sync:", e);
+              }
+            }
             setCreatedResult(resData);
             showToast("Account successfully provisioned!", "success");
             if (onSuccess) onSuccess(resData.user);
@@ -2944,18 +3050,18 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
 
       return (
         <div className="modal-overlay" style={{display:"flex",alignItems:"center",justifyContent:"center",zIndex:99999,position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",backdropFilter:"blur(8px)"}}>
-          <div className="modal-content animate-scaleIn" style={{width:"95%",maxWidth:"620px",background:"var(--bg-card, #1e293b)",border:"1px solid var(--border-color, #334155)",borderRadius:"16px",boxShadow:"0 25px 50px -12px rgba(0,0,0,0.6)",padding:"28px",maxHeight:"90vh",overflowY:"auto"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"20px",borderBottom:"1px solid var(--border-color, #334155)",paddingBottom:"14px"}}>
+          <div className="modal-content animate-scaleIn" style={{width:"95%",maxWidth:"620px",background:"var(--bg-card, #ffffff)",border:"1.5px solid var(--border-color, #cbd5e1)",borderRadius:"16px",boxShadow:"0 25px 50px -12px rgba(0,0,0,0.35)",padding:"28px",maxHeight:"90vh",overflowY:"auto",color:"var(--text-primary, #0f172a)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"20px",borderBottom:"1px solid var(--border-color, #e2e8f0)",paddingBottom:"14px"}}>
               <div>
-                <h3 style={{margin:0,fontSize:"20px",fontWeight:700,display:"flex",alignItems:"center",gap:"10px",color:"var(--text-primary, #f8fafc)"}}>
+                <h3 style={{margin:0,fontSize:"20px",fontWeight:700,display:"flex",alignItems:"center",gap:"10px",color:"var(--text-primary, #0f172a)"}}>
                   <i className="fas fa-user-plus" style={{color:"var(--primary, #6366f1)"}}></i> Unified Account Registration
                 </h3>
-                <p style={{margin:"4px 0 0",fontSize:"13px",color:"var(--text-secondary, #94a3b8)"}}>
+                <p style={{margin:"4px 0 0",fontSize:"13px",color:"var(--text-secondary, #475569)"}}>
                   Provision Student, Faculty, Accountant, or Admin accounts with server-side validation
                 </p>
               </div>
               {!createdResult && (
-                <button type="button" onClick={onClose} style={{background:"none",border:"none",color:"var(--text-secondary, #94a3b8)",fontSize:"18px",cursor:"pointer"}}>
+                <button type="button" onClick={onClose} style={{background:"none",border:"none",color:"var(--text-secondary, #64748b)",fontSize:"18px",cursor:"pointer"}}>
                   <i className="fas fa-times"></i>
                 </button>
               )}
@@ -2963,59 +3069,59 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
 
             {createdResult ? (
               <div>
-                <div style={{background:"rgba(16,185,129,0.1)",border:"1px solid #10b981",borderRadius:"12px",padding:"18px",marginBottom:"20px",textAlign:"center"}}>
-                  <i className="fas fa-check-circle" style={{fontSize:"36px",color:"#34d399",marginBottom:"8px"}}></i>
-                  <h4 style={{margin:0,color:"#34d399",fontSize:"18px"}}>Account Provisioned Successfully!</h4>
-                  <p style={{margin:"6px 0 0",fontSize:"13px",color:"#cbd5e1"}}>
+                <div style={{background:"rgba(16,185,129,0.1)",border:"1.5px solid #10b981",borderRadius:"12px",padding:"18px",marginBottom:"20px",textAlign:"center"}}>
+                  <i className="fas fa-check-circle" style={{fontSize:"36px",color:"#059669",marginBottom:"8px"}}></i>
+                  <h4 style={{margin:0,color:"#059669",fontSize:"18px",fontWeight:700}}>Account Provisioned Successfully!</h4>
+                  <p style={{margin:"6px 0 0",fontSize:"13px",color:"var(--text-secondary, #334155)"}}>
                     Institutional credentials generated and Welcome Email dispatched to recipient.
                   </p>
                 </div>
 
-                <div style={{background:"var(--bg-body, #0f172a)",border:"1px solid var(--border-color, #334155)",borderRadius:"12px",padding:"18px",marginBottom:"20px"}}>
+                <div style={{background:"var(--bg-primary, #f8fafc)",border:"1.5px solid var(--border-color, #e2e8f0)",borderRadius:"12px",padding:"18px",marginBottom:"20px"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",fontSize:"13px"}}>
                     <div>
-                      <span style={{color:"var(--text-secondary, #94a3b8)"}}>Full Name:</span>
-                      <div style={{fontWeight:600,color:"var(--text-primary, #f8fafc)"}}>{createdResult.user.name}</div>
+                      <span style={{color:"var(--text-secondary, #64748b)",fontSize:"12px",fontWeight:600}}>Full Name:</span>
+                      <div style={{fontWeight:700,color:"var(--text-primary, #0f172a)",fontSize:"14px"}}>{createdResult.user.name}</div>
                     </div>
                     <div>
-                      <span style={{color:"var(--text-secondary, #94a3b8)"}}>Account Role:</span>
-                      <div style={{fontWeight:600,color:"#818cf8"}}>{createdResult.user.role}</div>
+                      <span style={{color:"var(--text-secondary, #64748b)",fontSize:"12px",fontWeight:600}}>Account Role:</span>
+                      <div style={{fontWeight:700,color:"var(--primary, #6366f1)",fontSize:"14px"}}>{createdResult.user.role}</div>
                     </div>
                     <div>
-                      <span style={{color:"var(--text-secondary, #94a3b8)"}}>Primary Login Email:</span>
-                      <div style={{fontWeight:600,color:"var(--text-primary, #f8fafc)"}}>{createdResult.user.email}</div>
+                      <span style={{color:"var(--text-secondary, #64748b)",fontSize:"12px",fontWeight:600}}>Primary Login Email:</span>
+                      <div style={{fontWeight:600,color:"var(--text-primary, #0f172a)"}}>{createdResult.user.email}</div>
                     </div>
                     <div>
-                      <span style={{color:"var(--text-secondary, #94a3b8)"}}>Institutional Email:</span>
-                      <div style={{fontWeight:600,color:"#38bdf8"}}>{createdResult.user.institutionalEmail || "N/A"}</div>
+                      <span style={{color:"var(--text-secondary, #64748b)",fontSize:"12px",fontWeight:600}}>Institutional Email:</span>
+                      <div style={{fontWeight:700,color:"#0284c7"}}>{createdResult.user.institutionalEmail || "N/A"}</div>
                     </div>
                     {createdResult.user.grNumber && (
                       <div>
-                        <span style={{color:"var(--text-secondary, #94a3b8)"}}>Auto GR Number:</span>
-                        <div style={{fontWeight:700,color:"#34d399"}}>{createdResult.user.grNumber}</div>
+                        <span style={{color:"var(--text-secondary, #64748b)",fontSize:"12px",fontWeight:600}}>Auto GR Number:</span>
+                        <div style={{fontWeight:800,color:"#059669",fontSize:"15px"}}>{createdResult.user.grNumber}</div>
                       </div>
                     )}
                     <div>
-                      <span style={{color:"var(--text-secondary, #94a3b8)"}}>Account Status:</span>
-                      <span className="badge badge-success" style={{marginTop:"2px",display:"inline-block"}}>{createdResult.user.status || "ACTIVE"}</span>
+                      <span style={{color:"var(--text-secondary, #64748b)",fontSize:"12px",fontWeight:600}}>Account Status:</span>
+                      <div><span className="badge badge-success" style={{marginTop:"2px",display:"inline-block"}}>{createdResult.user.status || "ACTIVE"}</span></div>
                     </div>
                   </div>
 
-                  <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border-color, #334155)"}}>
-                    <span style={{color:"var(--text-secondary, #94a3b8)",fontSize:"12px"}}>One-Time Temporary Password:</span>
+                  <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border-color, #e2e8f0)"}}>
+                    <span style={{color:"var(--text-secondary, #475569)",fontSize:"12px",fontWeight:600}}>One-Time Temporary Password:</span>
                     <div style={{display:"flex",alignItems:"center",gap:"10px",marginTop:"6px"}}>
-                      <code style={{background:"#1e293b",border:"1px solid #475569",padding:"8px 14px",borderRadius:"6px",fontSize:"16px",color:"#fbbf24",letterSpacing:"1px",fontWeight:700,flex:1}}>
+                      <code style={{background:"#f1f5f9",border:"1.5px solid #cbd5e1",padding:"8px 14px",borderRadius:"6px",fontSize:"16px",color:"#d97706",letterSpacing:"1px",fontWeight:800,flex:1}}>
                         {createdResult.temporaryPassword}
                       </code>
-                      <button type="button" onClick={copyCredentials} className="btn btn-secondary" style={{padding:"8px 16px",display:"flex",alignItems:"center",gap:"6px"}}>
+                      <button type="button" onClick={copyCredentials} className="btn btn-secondary" style={{padding:"8px 16px",display:"flex",alignItems:"center",gap:"6px",background:"var(--bg-secondary, #ffffff)",color:"var(--text-primary, #0f172a)",border:"1px solid var(--border-color, #cbd5e1)"}}>
                         <i className={"fas " + (copied ? "fa-check" : "fa-copy")}></i> {copied ? "Copied!" : "Copy"}
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <div style={{background:"rgba(56,189,248,0.1)",borderLeft:"4px solid #38bdf8",padding:"12px 14px",borderRadius:"0 8px 8px 0",fontSize:"12.5px",color:"#cbd5e1",marginBottom:"20px"}}>
-                  <i className="fas fa-envelope" style={{color:"#38bdf8",marginRight:"6px"}}></i>
+                <div style={{background:"rgba(14,165,233,0.08)",borderLeft:"4px solid #0284c7",padding:"12px 14px",borderRadius:"0 8px 8px 0",fontSize:"12.5px",color:"var(--text-primary, #0f172a)",marginBottom:"20px"}}>
+                  <i className="fas fa-envelope" style={{color:"#0284c7",marginRight:"6px"}}></i>
                   <strong>Automated Dispatch:</strong> A welcome email with credentials was sent to <strong>{createdResult.user.email}</strong>.
                 </div>
 
@@ -3026,7 +3132,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
             ) : (
               <form onSubmit={handleRegister}>
                 <div className="form-group" style={{marginBottom:"16px"}}>
-                  <label style={{fontSize:"13px",fontWeight:600,display:"block",marginBottom:"8px"}}>Select Account Type</label>
+                  <label style={{fontSize:"13px",fontWeight:600,display:"block",marginBottom:"8px",color:"var(--text-primary, #0f172a)"}}>Select Account Type</label>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:"8px"}}>
                     {["STUDENT", "TEACHER", "ACCOUNTANT", "ADMIN"].map(r => (
                       <button
@@ -3034,7 +3140,18 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
                         type="button"
                         onClick={() => setRole(r)}
                         className={"btn " + (role === r ? "btn-primary" : "btn-secondary")}
-                        style={{padding:"10px 6px",fontSize:"12px",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",borderRadius:"8px"}}
+                        style={{
+                          padding:"10px 6px",
+                          fontSize:"12px",
+                          display:"flex",
+                          flexDirection:"column",
+                          alignItems:"center",
+                          gap:"4px",
+                          borderRadius:"8px",
+                          color: role === r ? "#ffffff" : "var(--text-primary, #0f172a)",
+                          background: role === r ? "var(--primary, #6366f1)" : "var(--bg-primary, #f8fafc)",
+                          border: "1.5px solid " + (role === r ? "var(--primary, #6366f1)" : "var(--border-color, #cbd5e1)")
+                        }}
                       >
                         <i className={"fas " + (r === "STUDENT" ? "fa-user-graduate" : r === "TEACHER" ? "fa-chalkboard-teacher" : r === "ACCOUNTANT" ? "fa-calculator" : "fa-user-shield")} />
                         {r.charAt(0) + r.slice(1).toLowerCase()}
@@ -3045,7 +3162,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
 
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px",marginBottom:"14px"}}>
                   <div className="form-group" style={{margin:0}}>
-                    <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px"}}>Full Name *</label>
+                    <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Full Name *</label>
                     <input
                       type="text"
                       className="input"
@@ -3056,7 +3173,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
                     />
                   </div>
                   <div className="form-group" style={{margin:0}}>
-                    <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px"}}>Personal / Login Email *</label>
+                    <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Personal / Login Email *</label>
                     <input
                       type="email"
                       className="input"
@@ -3069,13 +3186,13 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
                 </div>
 
                 {role === "STUDENT" ? (
-                  <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid var(--border-color, #334155)",borderRadius:"10px",padding:"14px",marginBottom:"14px"}}>
-                    <div style={{fontSize:"12px",fontWeight:700,color:"var(--primary-light, #818cf8)",marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>
+                  <div className="modal-param-card" style={{background:"var(--bg-primary, #f8fafc)",border:"1.5px solid var(--border-color, #e2e8f0)",borderRadius:"12px",padding:"14px",marginBottom:"14px"}}>
+                    <div style={{fontSize:"12px",fontWeight:700,color:"var(--primary, #6366f1)",marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>
                       <i className="fas fa-graduation-cap"></i> Student Enrollment Parameters
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"10px"}}>
                       <div className="form-group" style={{margin:0}}>
-                        <label style={{fontSize:"12px"}}>Class & Section</label>
+                        <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Class & Section</label>
                         <select className="input" value={classId} onChange={e => setClassId(e.target.value)}>
                           <option value="1">Grade 10 - Section A</option>
                           <option value="2">Grade 11 - Section B</option>
@@ -3083,32 +3200,32 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
                         </select>
                       </div>
                       <div className="form-group" style={{margin:0}}>
-                        <label style={{fontSize:"12px"}}>Auto GR Number</label>
-                        <input type="text" className="input" value="Auto-generated (GR2026NNN)" disabled style={{opacity:0.7,background:"rgba(0,0,0,0.2)"}} />
+                        <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Auto GR Number</label>
+                        <input type="text" className="input" value="Auto-generated (GR2026NNN)" disabled style={{background:"var(--border-light, #f1f5f9)",border:"1.5px solid var(--border-color, #cbd5e1)",color:"var(--text-secondary, #475569)",fontWeight:600}} />
                       </div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px"}}>
                       <div className="form-group" style={{margin:0}}>
-                        <label style={{fontSize:"11px"}}>Guardian Name</label>
+                        <label style={{fontSize:"11px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Guardian Name</label>
                         <input type="text" className="input" placeholder="Parent/Guardian" value={guardianName} onChange={e => setGuardianName(e.target.value)} />
                       </div>
                       <div className="form-group" style={{margin:0}}>
-                        <label style={{fontSize:"11px"}}>Guardian Phone</label>
+                        <label style={{fontSize:"11px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Guardian Phone</label>
                         <input type="tel" className="input" placeholder="+91..." value={guardianPhone} onChange={e => setGuardianPhone(e.target.value)} />
                       </div>
                       <div className="form-group" style={{margin:0}}>
-                        <label style={{fontSize:"11px"}}>Guardian Email</label>
+                        <label style={{fontSize:"11px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Guardian Email</label>
                         <input type="email" className="input" placeholder="guardian@mail.com" value={guardianEmail} onChange={e => setGuardianEmail(e.target.value)} />
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid var(--border-color, #334155)",borderRadius:"10px",padding:"14px",marginBottom:"14px"}}>
-                    <div style={{fontSize:"12px",fontWeight:700,color:"var(--primary-light, #818cf8)",marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>
+                  <div className="modal-param-card" style={{background:"var(--bg-primary, #f8fafc)",border:"1.5px solid var(--border-color, #e2e8f0)",borderRadius:"12px",padding:"14px",marginBottom:"14px"}}>
+                    <div style={{fontSize:"12px",fontWeight:700,color:"var(--primary, #6366f1)",marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>
                       <i className="fas fa-building"></i> Institutional Assignment
                     </div>
                     <div className="form-group" style={{margin:0}}>
-                      <label style={{fontSize:"12px"}}>Department</label>
+                      <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Department</label>
                       <select className="input" value={departmentName} onChange={e => setDepartmentName(e.target.value)}>
                         <option value="Computer Science & Engineering">Computer Science & Engineering</option>
                         <option value="Mechanical & Robotics">Mechanical & Robotics</option>
@@ -3119,19 +3236,19 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
                   </div>
                 )}
 
-                <div style={{background:"rgba(99,102,241,0.08)",border:"1px dashed #6366f1",borderRadius:"8px",padding:"10px 14px",fontSize:"12px",color:"#cbd5e1",marginBottom:"16px"}}>
-                  <i className="fas fa-magic" style={{color:"#818cf8",marginRight:"6px"}}></i>
-                  <strong>Server-Generated:</strong> Collision-free User ID, Institutional alias (<code>name@{role === "STUDENT" ? "student.edutrack.edu" : "edutrack.edu"}</code>), secure temporary password, and Welcome Email dispatch are handled automatically.
+                <div className="modal-info-banner" style={{background:"rgba(99,102,241,0.08)",border:"1px dashed var(--primary, #6366f1)",borderRadius:"8px",padding:"10px 14px",fontSize:"12px",color:"var(--text-primary, #1e293b)",marginBottom:"16px",lineHeight:"1.5"}}>
+                  <i className="fas fa-magic" style={{color:"var(--primary, #6366f1)",marginRight:"6px"}}></i>
+                  <strong>Server-Generated:</strong> Collision-free User ID, Institutional alias (<code style={{background:"rgba(99,102,241,0.15)",color:"var(--primary-dark, #4f46e5)",padding:"2px 6px",borderRadius:"4px",fontWeight:600}}>name@{role === "STUDENT" ? "student.edutrack.edu" : "edutrack.edu"}</code>), secure temporary password, and Welcome Email dispatch are handled automatically.
                 </div>
 
                 {error && (
-                  <div style={{color:"#f87171",background:"rgba(239,68,68,0.1)",border:"1px solid #ef4444",borderRadius:"8px",padding:"10px 14px",fontSize:"13px",marginBottom:"16px",display:"flex",alignItems:"center",gap:"8px"}}>
+                  <div style={{color:"#ef4444",background:"rgba(239,68,68,0.1)",border:"1px solid #ef4444",borderRadius:"8px",padding:"10px 14px",fontSize:"13px",marginBottom:"16px",display:"flex",alignItems:"center",gap:"8px"}}>
                     <i className="fas fa-exclamation-triangle"></i> {error}
                   </div>
                 )}
 
                 <div style={{display:"flex",gap:"10px",justifyContent:"flex-end"}}>
-                  <button type="button" onClick={onClose} className="btn btn-secondary" disabled={loading}>
+                  <button type="button" onClick={onClose} className="btn btn-secondary" disabled={loading} style={{background:"var(--bg-primary, #f1f5f9)",color:"var(--text-primary, #0f172a)",border:"1px solid var(--border-color, #cbd5e1)"}}>
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={loading} style={{minWidth:"180px"}}>
@@ -3174,6 +3291,20 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
             console.warn("API password change error, falling back locally:", apiErr);
           }
 
+          if (typeof DS !== 'undefined' && user) {
+            try {
+              const users = DS.getUsers();
+              const u = users.find(x => x.id === user.id || x.email === user.email);
+              if (u) {
+                u.password = newPassword;
+                u.mustChangePassword = false;
+                DS.setCollection('users', users);
+              }
+            } catch (e) {
+              console.warn("DS password update:", e);
+            }
+          }
+
           showToast("Password updated successfully! Welcome to EDUTrack.", "success");
           if (onCompleted) onCompleted();
         } catch (err) {
@@ -3184,23 +3315,23 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
       };
 
       return (
-        <div className="modal-overlay" style={{display:"flex",alignItems:"center",justifyContent:"center",zIndex:999999,position:"fixed",inset:0,background:"rgba(15,23,42,0.92)",backdropFilter:"blur(10px)"}}>
-          <div className="modal-content animate-scaleIn" style={{width:"90%",maxWidth:"480px",background:"var(--bg-card, #1e293b)",border:"1px solid #ef4444",borderRadius:"16px",boxShadow:"0 25px 50px -12px rgba(239,68,68,0.25)",padding:"28px"}}>
+        <div className="modal-overlay" style={{display:"flex",alignItems:"center",justifyContent:"center",zIndex:999999,position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",backdropFilter:"blur(10px)"}}>
+          <div className="modal-content animate-scaleIn" style={{width:"90%",maxWidth:"480px",background:"var(--bg-card, #ffffff)",border:"2px solid #ef4444",borderRadius:"16px",boxShadow:"0 25px 50px -12px rgba(239,68,68,0.25)",padding:"28px",color:"var(--text-primary, #0f172a)"}}>
             <div style={{textAlign:"center",marginBottom:"20px"}}>
-              <div style={{width:"56px",height:"56px",background:"rgba(239,68,68,0.15)",border:"2px solid #ef4444",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",color:"#f87171",fontSize:"24px"}}>
+              <div style={{width:"56px",height:"56px",background:"rgba(239,68,68,0.12)",border:"2px solid #ef4444",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",color:"#ef4444",fontSize:"24px"}}>
                 <i className="fas fa-shield-alt"></i>
               </div>
-              <h3 style={{margin:0,fontSize:"20px",fontWeight:700,color:"var(--text-primary, #f8fafc)"}}>
+              <h3 style={{margin:0,fontSize:"20px",fontWeight:700,color:"var(--text-primary, #0f172a)"}}>
                 Mandatory Security Requirement
               </h3>
-              <p style={{margin:"6px 0 0",fontSize:"13px",color:"var(--text-secondary, #94a3b8)"}}>
+              <p style={{margin:"6px 0 0",fontSize:"13px",color:"var(--text-secondary, #475569)"}}>
                 First-time login detected. You must set a permanent secure password before accessing institutional portals.
               </p>
             </div>
 
             <form onSubmit={handlePasswordUpdate}>
               <div className="form-group" style={{marginBottom:"14px"}}>
-                <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px"}}>New Password (Min. 6 chars)</label>
+                <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>New Password (Min. 6 chars)</label>
                 <input
                   type="password"
                   className="input"
@@ -3212,7 +3343,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
               </div>
 
               <div className="form-group" style={{marginBottom:"16px"}}>
-                <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px"}}>Confirm New Password</label>
+                <label style={{fontSize:"12px",fontWeight:600,display:"block",marginBottom:"4px",color:"var(--text-primary, #0f172a)"}}>Confirm New Password</label>
                 <input
                   type="password"
                   className="input"
@@ -3224,7 +3355,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
               </div>
 
               {error && (
-                <div style={{color:"#f87171",background:"rgba(239,68,68,0.1)",border:"1px solid #ef4444",borderRadius:"8px",padding:"10px 12px",fontSize:"12.5px",marginBottom:"16px",display:"flex",alignItems:"center",gap:"6px"}}>
+                <div style={{color:"#dc2626",background:"rgba(239,68,68,0.1)",border:"1px solid #ef4444",borderRadius:"8px",padding:"10px 12px",fontSize:"12.5px",marginBottom:"16px",display:"flex",alignItems:"center",gap:"6px"}}>
                   <i className="fas fa-exclamation-circle"></i> {error}
                 </div>
               )}
@@ -3351,13 +3482,13 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
                 <i className="fas fa-shield-alt" style={{color:'var(--primary-light)'}}></i> Secured by 256-bit AES · MySQL & MongoDB Enterprise Core · Role Based ERP
               </div>
             </form>
-
-            <UnifiedRegistrationModal
-              isOpen={showRegisterModal}
-              onClose={() => setShowRegisterModal(false)}
-              defaultRole="STUDENT"
-            />
           </div>
+
+          <UnifiedRegistrationModal
+            isOpen={showRegisterModal}
+            onClose={() => setShowRegisterModal(false)}
+            defaultRole="STUDENT"
+          />
         </div>
       );
     }
