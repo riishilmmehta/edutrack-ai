@@ -2,7 +2,7 @@
 
 > Next-Generation Academic Operating System with AI-Powered Insights
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-6366f1?style=for-the-badge&logo=vercel)](https://edutrack-ai-pro.vercel.app)
+[![Live Demo](https://riishilmmehta.github.io/edutrack-ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 📋 Overview
