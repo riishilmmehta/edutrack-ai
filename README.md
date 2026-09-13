@@ -11,7 +11,3 @@ EDUTrack AI Pro is a comprehensive academic management platform with AI-powered 
 
 ## 🚀 Quick Start
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/yourusername/edutrack-ai.git
-cd edutrack-ai
