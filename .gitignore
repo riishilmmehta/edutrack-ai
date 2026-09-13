@@ -1,0 +1,105 @@
+## ==========================================================
+## EDUTrack AI Pro - .gitignore
+## Node.js backend + MySQL/MongoDB + frontend
+## ==========================================================
+
+# ---------- Environment & Secrets (NEVER commit these) ----------
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+*.pem
+*.key
+config/secrets.js
+config/database.js
+
+# ---------- Node.js ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.yarn/
+.pnp.*
+
+# Package lock files (keep ONE — uncomment the ones you don't use)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ---------- Build output ----------
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+
+# ---------- Database dumps & data files ----------
+*.sql.bak
+*.dump
+*.sqlite
+*.sqlite3
+/database/backups/
+/database/*.dump
+mongo-data/
+mysql-data/
+*.db
+
+# ---------- Logs ----------
+logs/
+*.log
+npm-debug.log*
+combined.log
+error.log
+
+# ---------- Uploaded/user files (don't version real uploads) ----------
+uploads/
+public/uploads/
+storage/
+tmp/
+temp/
+
+# ---------- OS-generated files ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ---------- Editor / IDE ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+
+# ---------- Testing / coverage ----------
+coverage/
+.nyc_output/
+*.lcov
+
+# ---------- Apache / server-specific ----------
+*.pid
+*.seed
+*.pid.lock
+error_log
+access_log
+
+# ---------- Misc ----------
+*.tgz
+*.tar.gz
+.env.vault
+.vercel
+.netlify
