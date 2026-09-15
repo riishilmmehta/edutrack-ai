@@ -682,6 +682,26 @@
         ensureDemoAccounts();
       }
 
+      wipeDemoData() {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith('edutrack_'));
+        keys.forEach(k => localStorage.removeItem(k));
+        localStorage.setItem('edutrack_demo_cleared', 'true');
+        
+        // Retain 1 Admin account to prevent lockout
+        const adminUser = { 
+          id: 'u11', name: 'Admin User', email: 'admin@edutrack.edu', role: 'ADMIN', 
+          password: 'password', avatar: null, phone: '+91-9876543220', joined: new Date().toISOString().split('T')[0] 
+        };
+        const admins = [{ id: 'a1', userId: 'u11', name: 'Admin User', department: 'Administration', designation: 'System Administrator' }];
+        
+        localStorage.setItem('edutrack_users', JSON.stringify([adminUser]));
+        localStorage.setItem('edutrack_admins', JSON.stringify(admins));
+        localStorage.setItem('edutrack_settings_obj', JSON.stringify({ institutionName: 'Vidhyadham Institute', schoolDomain: 'edutrack.edu', theme: 'light' }));
+        
+        window.location.reload();
+      }
+
+
       // GR & Email Generation
       generateGRNumber(year, sequence) {
         return `GR${year}${sequence.toString().padStart(3, '0')}`;
@@ -1721,6 +1741,7 @@
 
     // ===================== SEED DATABASE =====================
     function seedDatabase(force = false) {
+      if (localStorage.getItem('edutrack_demo_cleared') === 'true') return;
       const now = new Date();
       if (!force && DS.getUsers().length > 0) return;
 
@@ -2111,6 +2132,7 @@
     seedDatabase();
 
     function ensureDemoAccounts() {
+      if (localStorage.getItem('edutrack_demo_cleared') === 'true') return;
       const settings = DS.getSettings();
       const domain = (settings.schoolDomain || 'vidhyadham.edu').trim().toLowerCase();
       const users = DS.getUsers();
@@ -3377,7 +3399,6 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
       const [role, setRole] = useState('STUDENT');
       const [error, setError] = useState('');
       const [loading, setLoading] = useState(false);
-      const [showRegisterModal, setShowRegisterModal] = useState(false);
       const loginDomain = (DS.getSettings().schoolDomain || 'vidhyadham.edu').trim().toLowerCase();
       const demoAccounts = [
         { label:'Student', role:'STUDENT', email:`aaravshah@${loginDomain}`, desc:'Student Portal', pass:'GR2026036' },
@@ -3466,29 +3487,11 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
               <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading} style={{marginTop:'8px'}}>
                 {loading ? <><i className="fas fa-circle-notch fa-spin"></i> Authenticating...</> : <><i className="fas fa-sign-in-alt"></i> Enter Portal</>}
               </button>
-              <div style={{marginTop:'14px',textAlign:'center'}}>
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterModal(true)}
-                  className="btn btn-secondary btn-block"
-                  style={{background:'rgba(255,255,255,0.06)',border:'1px dashed var(--primary-light)',fontSize:'13px',padding:'10px'}}
-                >
-                  <i className="fas fa-user-plus" style={{marginRight:'6px',color:'var(--primary-light)'}}></i>
-                  Register New Account (Public Self-Service)
-                </button>
-              </div>
-
               <div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',fontSize:'11.5px',marginTop:'18px',lineHeight:'1.6'}}>
                 <i className="fas fa-shield-alt" style={{color:'var(--primary-light)'}}></i> Secured by 256-bit AES · MySQL & MongoDB Enterprise Core · Role Based ERP
               </div>
             </form>
           </div>
-
-          <UnifiedRegistrationModal
-            isOpen={showRegisterModal}
-            onClose={() => setShowRegisterModal(false)}
-            defaultRole="STUDENT"
-          />
         </div>
       );
     }
@@ -10485,14 +10488,28 @@ function App() {
               </div>
               <div className="topbar-right">
                 {effectiveRole === 'ADMIN' && (
-                  <button
-                    type="button"
-                    onClick={() => setAdminRegisterOpen(true)}
-                    className="btn btn-primary btn-sm"
-                    style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'12.5px',padding:'6px 14px',borderRadius:'8px'}}
-                  >
-                    <i className="fas fa-user-plus"></i> Register User
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setAdminRegisterOpen(true)}
+                      className="btn btn-primary btn-sm"
+                      style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'12.5px',padding:'6px 14px',borderRadius:'8px'}}
+                    >
+                      <i className="fas fa-user-plus"></i> Register User
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if(window.confirm('WARNING: This will wipe all demo data, leaving only the admin account. Proceed?')) {
+                          DS.wipeDemoData();
+                        }
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'12.5px',padding:'6px 14px',borderRadius:'8px',background:'#ef4444',color:'white',border:'none'}}
+                    >
+                      <i className="fas fa-trash-alt"></i> Wipe Demo Data
+                    </button>
+                  </>
                 )}
                 {canSwitchView && (
                   <div className="view-switcher">
