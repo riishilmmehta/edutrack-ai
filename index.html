@@ -1332,19 +1332,18 @@
         return suggestions;
       }
 
-      login(email, password, role) {
+      login(email, password) {
         const query = (email || '').trim().toLowerCase();
         const user = this.getUsers().find(u => 
           ((u.email && u.email.toLowerCase() === query) ||
            (u.institutionalEmail && u.institutionalEmail.toLowerCase() === query) ||
-           (u.grNumber && u.grNumber.toLowerCase() === query)) && 
-          u.role === role
+           (u.grNumber && u.grNumber.toLowerCase() === query))
         );
-        if (!user) return { success: false, error: 'User not found. Check email and role.' };
+        if (!user) return { success: false, error: 'User not found. Check your email/username.' };
         if (password !== user.password) return { success: false, error: 'Invalid password.' };
         localStorage.setItem('edutrack_currentUser', JSON.stringify(user));
-        localStorage.setItem('edutrack_currentRole', role);
-        return { success: true, user, role };
+        localStorage.setItem('edutrack_currentRole', user.role);
+        return { success: true, user, role: user.role };
       }
       logout() { localStorage.removeItem('edutrack_currentUser'); localStorage.removeItem('edutrack_currentRole'); return { success: true }; }
       getCurrentUser() { const u = localStorage.getItem('edutrack_currentUser'); return u ? JSON.parse(u) : null; }
@@ -3374,29 +3373,13 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
     function Login({ onLogin }) {
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
-      const [role, setRole] = useState('STUDENT');
       const [error, setError] = useState('');
       const [loading, setLoading] = useState(false);
       const [showRegisterModal, setShowRegisterModal] = useState(false);
-      const loginDomain = (DS.getSettings().schoolDomain || 'vidhyadham.edu').trim().toLowerCase();
-      const demoAccounts = [
-        { label:'Student', role:'STUDENT', email:`aaravshah@${loginDomain}`, desc:'Student Portal', pass:'GR2026036' },
-        { label:'Teacher', role:'TEACHER', email:'priya@edutrack.edu', desc:'Faculty Dashboard', pass:'password' },
-        { label:'Admin', role:'ADMIN', email:'admin@edutrack.edu', desc:'System Admin', pass:'password' },
-        { label:'Accountant', role:'ACCOUNTANT', email:'accountant@edutrack.edu', desc:'Finance Panel', pass:'password' }
-      ];
-
-      useEffect(() => {
-        const found = demoAccounts.find(d => d.role === role);
-        if (found && !email) {
-          setEmail(found.email);
-          setPassword(found.pass);
-        }
-      }, [role]);
 
       const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!email.trim()) { setError('Email is required'); showToast('Email is required','error'); return; }
+        if (!email.trim()) { setError('Email/Username is required'); showToast('Email/Username is required','error'); return; }
         if (!password.trim()) { setError('Password is required'); showToast('Password is required','error'); return; }
         setLoading(true); setError('');
 
@@ -3414,7 +3397,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
         }
 
         setTimeout(() => {
-          const result = DS.login(email, password, role);
+          const result = DS.login(email, password);
           if (result.success) { 
             showToast('Welcome back, ' + result.user.name + '!', 'success'); 
             onLogin(result.user, result.role); 
@@ -3439,24 +3422,12 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label>Select Access Role</label>
-                <div className="role-selector">
-                  {demoAccounts.map(acc => (
-                    <button key={acc.role} type="button" className={`role-btn ${role===acc.role?'active':''}`}
-                      onClick={()=>{ setRole(acc.role); setEmail(acc.email); setPassword(acc.pass); setError(''); }}>
-                      <i className={`fas ${acc.role==='STUDENT'?'fa-user-graduate':acc.role==='TEACHER'?'fa-chalkboard-teacher':acc.role==='ADMIN'?'fa-user-shield':'fa-calculator'}`} />
-                      {acc.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Email Address</label>
-                <input type="email" className="input" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Enter institutional email" required />
+                <label>Email Address / Username</label>
+                <input type="text" className="input" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Enter institutional email or ID" required />
               </div>
               <div className="form-group">
                 <label>Password</label>
-                <input type="password" className="input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Enter password (e.g. GR Number)" required />
+                <input type="password" className="input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Enter your password" required />
               </div>
               {error && (
                 <p style={{color:'#f87171',fontSize:'13px',marginBottom:'16px',display:'flex',alignItems:'center',gap:'6px'}}>
@@ -3479,7 +3450,7 @@ ${topic.notes || '1. Core Theoretical Foundations:\n- Detailed conceptual breakd
               </div>
 
               <div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',fontSize:'11.5px',marginTop:'18px',lineHeight:'1.6'}}>
-                <i className="fas fa-shield-alt" style={{color:'var(--primary-light)'}}></i> Secured by 256-bit AES · MySQL & MongoDB Enterprise Core · Role Based ERP
+                <i className="fas fa-shield-alt" style={{color:'var(--primary-light)'}}></i> Secured by 256-bit AES · System Auto-Detects User Role
               </div>
             </form>
           </div>
