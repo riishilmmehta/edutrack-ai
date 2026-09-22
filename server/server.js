@@ -10,6 +10,8 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const gradeRoutes = require('./routes/gradeRoutes');
 const feeRoutes = require('./routes/feeRoutes');
+const schoolRoutes = require('./routes/schoolRoutes');
+const { resolveTenant } = require('./middleware/tenantMiddleware');
 
 const app = express();
 
@@ -28,6 +30,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Apply tenant resolution to all API routes
+app.use('/api', resolveTenant);
+
+app.use('/api/schools', schoolRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/attendance', attendanceRoutes);

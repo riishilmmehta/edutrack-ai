@@ -17,12 +17,12 @@ async function getFees(req, res) {
       FROM fees f
       JOIN students s ON f.student_id = s.id
       JOIN users u ON s.user_id = u.id
-      WHERE 1=1
+      WHERE f.school_id = ?
     `;
-    const params = [];
+    const params = [req.user.school_id];
 
     if (req.user.role === 'STUDENT') {
-      const [sRows] = await pool.query(`SELECT id FROM students WHERE user_id = ?`, [req.user.id]);
+      const [sRows] = await pool.query(`SELECT id FROM students WHERE user_id = ? AND school_id = ?`, [req.user.id, req.user.school_id]);
       if (sRows.length === 0) return res.json({ success: true, fees: [] });
       query += ` AND f.student_id = ?`;
       params.push(sRows[0].id);
@@ -65,8 +65,8 @@ async function recordPayment(req, res) {
       `SELECT f.id, f.title, f.amount, f.status, s.user_id
        FROM fees f
        JOIN students s ON f.student_id = s.id
-       WHERE f.id = ?`,
-      [feeId]
+       WHERE f.id = ? AND f.school_id = ?`,
+      [feeId, req.user.school_id]
     );
 
     if (feeRows.length === 0) {
@@ -98,6 +98,7 @@ async function recordPayment(req, res) {
     });
 
     await Notification.create({
+      schoolId: req.user.school_id,
       userId: fee.user_id,
       type: 'GENERAL',
       title: 'Fee Payment Received',
@@ -134,8 +135,8 @@ async function waiveFee(req, res) {
       `SELECT f.id, f.title, f.amount, s.user_id
        FROM fees f
        JOIN students s ON f.student_id = s.id
-       WHERE f.id = ?`,
-      [feeId]
+       WHERE f.id = ? AND f.school_id = ?`,
+      [feeId, req.user.school_id]
     );
 
     if (feeRows.length === 0) {
@@ -161,6 +162,7 @@ async function waiveFee(req, res) {
     });
 
     await Notification.create({
+      schoolId: req.user.school_id,
       userId: fee.user_id,
       type: 'GENERAL',
       title: 'Fee Waived',

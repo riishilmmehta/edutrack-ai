@@ -18,9 +18,9 @@ async function recordGrade(req, res) {
     await conn.beginTransaction();
 
     const [result] = await conn.query(
-      `INSERT INTO grades (student_id, course_id, assessment_type, score, max_score, graded_by, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [studentId, courseId, assessmentType, score, maxScore, req.user.id, remarks]
+      `INSERT INTO grades (school_id, student_id, course_id, assessment_type, score, max_score, graded_by, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.school_id, studentId, courseId, assessmentType, score, maxScore, req.user.id, remarks]
     );
 
     // Fetch student's user_id and course title for notification
@@ -28,8 +28,8 @@ async function recordGrade(req, res) {
       `SELECT s.user_id, co.title AS course_title
        FROM students s
        CROSS JOIN courses co
-       WHERE s.id = ? AND co.id = ?`,
-      [studentId, courseId]
+       WHERE s.id = ? AND co.id = ? AND s.school_id = ? AND co.school_id = ?`,
+      [studentId, courseId, req.user.school_id, req.user.school_id]
     );
 
     await conn.commit();
@@ -37,6 +37,7 @@ async function recordGrade(req, res) {
     if (infoRows.length > 0) {
       const { user_id, course_title } = infoRows[0];
       await Notification.create({
+        schoolId: req.user.school_id,
         userId: user_id,
         type: 'GRADE_PUBLISHED',
         title: `Grade Published: ${course_title}`,
@@ -81,12 +82,12 @@ async function getGrades(req, res) {
       JOIN courses co ON g.course_id = co.id
       JOIN students s ON g.student_id = s.id
       JOIN users u ON s.user_id = u.id
-      WHERE 1=1
+      WHERE g.school_id = ?
     `;
-    const params = [];
+    const params = [req.user.school_id];
 
     if (req.user.role === 'STUDENT') {
-      const [sRows] = await pool.query(`SELECT id FROM students WHERE user_id = ?`, [req.user.id]);
+      const [sRows] = await pool.query(`SELECT id FROM students WHERE user_id = ? AND school_id = ?`, [req.user.id, req.user.school_id]);
       if (sRows.length === 0) return res.json({ success: true, grades: [] });
       query += ` AND g.student_id = ?`;
       params.push(sRows[0].id);

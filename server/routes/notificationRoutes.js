@@ -7,7 +7,7 @@ const router = express.Router();
 // Get the logged-in user's notifications
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.id })
+    const notifications = await Notification.find({ userId: req.user.id, schoolId: req.user.school_id })
       .sort({ createdAt: -1 })
       .limit(50);
     res.json({ success: true, notifications });
@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.patch('/:id/read', requireAuth, async (req, res) => {
   try {
     await Notification.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
+      { _id: req.params.id, userId: req.user.id, schoolId: req.user.school_id },
       { read: true }
     );
     res.json({ success: true });

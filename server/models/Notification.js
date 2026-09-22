@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema({
+  schoolId: { type: Number, required: true, index: true },
   userId: { type: Number, required: true, index: true }, // maps to MySQL users.id
   type: {
     type: String,

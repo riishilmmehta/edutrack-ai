@@ -25,10 +25,10 @@ async function markAttendance(req, res) {
       }
 
       await conn.query(
-        `INSERT INTO attendance (student_id, class_id, course_id, date, status, marked_by, remarks)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO attendance (school_id, student_id, class_id, course_id, date, status, marked_by, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE status = VALUES(status), marked_by = VALUES(marked_by), remarks = VALUES(remarks)`,
-        [studentId, classId || null, courseId || null, date, status, req.user.id, remarks]
+        [req.user.school_id, studentId, classId || null, courseId || null, date, status, req.user.id, remarks]
       );
 
       // If marked absent, fire notification to student in MongoDB
@@ -36,6 +36,7 @@ async function markAttendance(req, res) {
         const [studentRows] = await conn.query(`SELECT user_id FROM students WHERE id = ?`, [studentId]);
         if (studentRows.length > 0) {
           await Notification.create({
+            schoolId: req.user.school_id,
             userId: studentRows[0].user_id,
             type: 'ATTENDANCE_ALERT',
             title: 'Attendance Alert: Marked Absent',
@@ -83,13 +84,13 @@ async function getAttendance(req, res) {
       JOIN users u ON s.user_id = u.id
       LEFT JOIN classes c ON a.class_id = c.id
       LEFT JOIN courses co ON a.course_id = co.id
-      WHERE 1=1
+      WHERE a.school_id = ?
     `;
-    const params = [];
+    const params = [req.user.school_id];
 
     // If student role, lock to their own student profile
     if (req.user.role === 'STUDENT') {
-      const [sRows] = await pool.query(`SELECT id FROM students WHERE user_id = ?`, [req.user.id]);
+      const [sRows] = await pool.query(`SELECT id FROM students WHERE user_id = ? AND school_id = ?`, [req.user.id, req.user.school_id]);
       if (sRows.length === 0) {
         return res.json({ success: true, attendance: [] });
       }
@@ -142,8 +143,8 @@ async function getAttendanceStats(req, res) {
          SUM(CASE WHEN status = 'ABSENT' THEN 1 ELSE 0 END) AS absent_days,
          SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END) AS late_days
        FROM attendance
-       WHERE student_id = ?`,
-      [studentId]
+       WHERE student_id = ? AND school_id = ?`,
+      [studentId, req.user.school_id]
     );
 
     const stats = rows[0] || { total_days: 0, present_days: 0, absent_days: 0, late_days: 0 };

@@ -18,10 +18,10 @@ async function login(req, res) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, email, password_hash, role, status, must_change_password,
+      `SELECT id, school_id, name, email, password_hash, role, status, must_change_password,
               failed_login_attempts, lockout_until
-       FROM users WHERE email = ? OR institutional_email = ?`,
-      [email, email]
+       FROM users WHERE school_id = ? AND (email = ? OR institutional_email = ?)`,
+      [req.school.id, email, email]
     );
 
     if (rows.length === 0) {
@@ -57,7 +57,7 @@ async function login(req, res) {
     );
 
     const token = jwt.sign(
-      { id: user.id, role: user.role, email: user.email },
+      { id: user.id, role: user.role, email: user.email, school_id: user.school_id },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
@@ -109,7 +109,7 @@ async function register(req, res) {
   try {
     await conn.beginTransaction();
 
-    const [existing] = await conn.query(`SELECT id FROM users WHERE email = ?`, [email]);
+    const [existing] = await conn.query(`SELECT id FROM users WHERE school_id = ? AND email = ?`, [req.school.id, email]);
     if (existing.length > 0) {
       await conn.rollback();
       return res.status(409).json({ success: false, error: 'An account with this email already exists' });
@@ -133,27 +133,27 @@ async function register(req, res) {
     const status = createdBy === 'self' ? 'PENDING' : 'ACTIVE';
 
     const [userResult] = await conn.query(
-      `INSERT INTO users (name, email, institutional_email, password_hash, role, status, must_change_password)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      [name, email, institutionalEmail, passwordHash, role, status]
+      `INSERT INTO users (school_id, name, email, institutional_email, password_hash, role, status, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+      [req.school.id, name, email, institutionalEmail, passwordHash, role, status]
     );
     const userId = userResult.insertId;
 
     if (role === 'STUDENT') {
       await conn.query(
-        `INSERT INTO students (user_id, gr_number, class_id, admission_year)
-         VALUES (?, ?, ?, ?)`,
-        [userId, grNumber, classId, new Date().getFullYear()]
+        `INSERT INTO students (school_id, user_id, gr_number, class_id, admission_year)
+         VALUES (?, ?, ?, ?, ?)`,
+        [req.school.id, userId, grNumber, classId, new Date().getFullYear()]
       );
     } else if (role === 'TEACHER') {
       await conn.query(
-        `INSERT INTO teachers (user_id, department_id) VALUES (?, ?)`,
-        [userId, department || null]
+        `INSERT INTO teachers (school_id, user_id, department_id) VALUES (?, ?, ?)`,
+        [req.school.id, userId, department || null]
       );
     } else if (role === 'ACCOUNTANT') {
       await conn.query(
-        `INSERT INTO accountants (user_id, department) VALUES (?, ?)`,
-        [userId, department || 'Finance & Bursar']
+        `INSERT INTO accountants (school_id, user_id, department) VALUES (?, ?, ?)`,
+        [req.school.id, userId, department || 'Finance & Bursar']
       );
     }
     // ADMIN role has no separate profile table — users row is sufficient
@@ -171,6 +171,7 @@ async function register(req, res) {
 
     // Fire a welcome notification (email sending itself is wired up separately - see notifications service)
     await Notification.create({
+      schoolId: req.school.id,
       userId,
       type: 'WELCOME',
       title: 'Welcome to EDUTrack',
@@ -245,8 +246,9 @@ async function getPendingUsers(req, res) {
        FROM users u
        LEFT JOIN students s ON u.id = s.user_id
        LEFT JOIN teachers t ON u.id = t.user_id
-       WHERE u.status = 'PENDING'
-       ORDER BY u.created_at DESC`
+       WHERE u.school_id = ? AND u.status = 'PENDING'
+       ORDER BY u.created_at DESC`,
+       [req.user.school_id]
     );
 
     return res.json({ success: true, users: rows });
@@ -269,7 +271,7 @@ async function updateUserStatus(req, res) {
   }
 
   try {
-    const [result] = await pool.query(`UPDATE users SET status = ? WHERE id = ?`, [status, targetUserId]);
+    const [result] = await pool.query(`UPDATE users SET status = ? WHERE id = ? AND school_id = ?`, [status, targetUserId, req.user.school_id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
@@ -285,6 +287,7 @@ async function updateUserStatus(req, res) {
 
     // Notify user in MongoDB
     await Notification.create({
+      schoolId: req.user.school_id,
       userId: targetUserId,
       type: 'GENERAL',
       title: 'Account Status Updated',

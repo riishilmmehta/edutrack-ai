@@ -2,21 +2,36 @@
 CREATE DATABASE IF NOT EXISTS `edutrack_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `edutrack_db`;
 
+-- 0. Schools Table (Multi-Tenant)
+CREATE TABLE IF NOT EXISTS `schools` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `subdomain` VARCHAR(100) NOT NULL UNIQUE,
+  `school_name` VARCHAR(255) NOT NULL,
+  `status` ENUM('active', 'suspended', 'trial') DEFAULT 'active',
+  `logo_url` VARCHAR(255) DEFAULT NULL,
+  `primary_color` VARCHAR(50) DEFAULT NULL,
+  `secondary_color` VARCHAR(50) DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 1. Classes Table
 CREATE TABLE IF NOT EXISTS `classes` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `grade_level` VARCHAR(50) NOT NULL,
   `section` VARCHAR(20) DEFAULT 'A',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_class_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. Core Users Table
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `name` VARCHAR(150) NOT NULL,
-  `email` VARCHAR(191) NOT NULL UNIQUE,
-  `institutional_email` VARCHAR(191) DEFAULT NULL UNIQUE,
+  `email` VARCHAR(191) NOT NULL,
+  `institutional_email` VARCHAR(191) DEFAULT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
   `role` ENUM('STUDENT', 'TEACHER', 'ADMIN', 'ACCOUNTANT') NOT NULL,
   `status` ENUM('ACTIVE', 'PENDING', 'SUSPENDED', 'REJECTED') DEFAULT 'ACTIVE',
@@ -25,7 +40,9 @@ CREATE TABLE IF NOT EXISTS `users` (
   `lockout_until` DATETIME DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_email (`email`),
+  CONSTRAINT fk_user_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
+  UNIQUE INDEX idx_school_email (`school_id`, `email`),
+  UNIQUE INDEX idx_school_inst_email (`school_id`, `institutional_email`),
   INDEX idx_role (`role`),
   INDEX idx_status (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -33,52 +50,62 @@ CREATE TABLE IF NOT EXISTS `users` (
 -- 3. Student Profiles
 CREATE TABLE IF NOT EXISTS `students` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `user_id` INT NOT NULL UNIQUE,
-  `gr_number` VARCHAR(50) NOT NULL UNIQUE,
+  `gr_number` VARCHAR(50) NOT NULL,
   `class_id` INT DEFAULT NULL,
   `admission_year` INT NOT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_student_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_student_user FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_student_class FOREIGN KEY (`class_id`) REFERENCES `classes` (`id`) ON DELETE SET NULL,
-  INDEX idx_gr (`gr_number`),
+  UNIQUE INDEX idx_school_gr (`school_id`, `gr_number`),
   INDEX idx_student_class (`class_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. Teacher Profiles
 CREATE TABLE IF NOT EXISTS `teachers` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `user_id` INT NOT NULL UNIQUE,
   `department_id` VARCHAR(100) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_teacher_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_teacher_user FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 5. Accountant Profiles
 CREATE TABLE IF NOT EXISTS `accountants` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `user_id` INT NOT NULL UNIQUE,
   `department` VARCHAR(100) DEFAULT 'Finance & Bursar',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_accountant_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_accountant_user FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. Courses / Subjects
 CREATE TABLE IF NOT EXISTS `courses` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `code` VARCHAR(50) NOT NULL UNIQUE,
+  `school_id` INT NOT NULL,
+  `code` VARCHAR(50) NOT NULL,
   `title` VARCHAR(150) NOT NULL,
   `description` TEXT DEFAULT NULL,
   `credits` INT DEFAULT 3,
   `class_id` INT DEFAULT NULL,
   `teacher_user_id` INT DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_course_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_course_class FOREIGN KEY (`class_id`) REFERENCES `classes` (`id`) ON DELETE SET NULL,
-  CONSTRAINT fk_course_teacher FOREIGN KEY (`teacher_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+  CONSTRAINT fk_course_teacher FOREIGN KEY (`teacher_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  UNIQUE INDEX idx_school_course_code (`school_id`, `code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 7. Attendance Records
 CREATE TABLE IF NOT EXISTS `attendance` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `student_id` INT NOT NULL,
   `class_id` INT DEFAULT NULL,
   `course_id` INT DEFAULT NULL,
@@ -87,6 +114,7 @@ CREATE TABLE IF NOT EXISTS `attendance` (
   `marked_by` INT DEFAULT NULL,
   `remarks` VARCHAR(255) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_att_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_att_student FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_att_class FOREIGN KEY (`class_id`) REFERENCES `classes` (`id`) ON DELETE SET NULL,
   CONSTRAINT fk_att_course FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE SET NULL,
@@ -98,6 +126,7 @@ CREATE TABLE IF NOT EXISTS `attendance` (
 -- 8. Academic Grades & Marks
 CREATE TABLE IF NOT EXISTS `grades` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `student_id` INT NOT NULL,
   `course_id` INT NOT NULL,
   `assessment_type` ENUM('MIDTERM', 'FINAL', 'QUIZ', 'ASSIGNMENT', 'PROJECT') DEFAULT 'QUIZ',
@@ -106,6 +135,7 @@ CREATE TABLE IF NOT EXISTS `grades` (
   `graded_by` INT DEFAULT NULL,
   `remarks` VARCHAR(255) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_grade_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_grade_student FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_grade_course FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_grade_teacher FOREIGN KEY (`graded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
@@ -116,6 +146,7 @@ CREATE TABLE IF NOT EXISTS `grades` (
 -- 9. Fees & Billing
 CREATE TABLE IF NOT EXISTS `fees` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `student_id` INT NOT NULL,
   `title` VARCHAR(150) NOT NULL,
   `amount` DECIMAL(10,2) NOT NULL,
@@ -126,6 +157,7 @@ CREATE TABLE IF NOT EXISTS `fees` (
   `waived_by` INT DEFAULT NULL,
   `remarks` VARCHAR(255) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_fee_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_fee_student FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE,
   CONSTRAINT fk_fee_waiver_user FOREIGN KEY (`waived_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   INDEX idx_fee_student (`student_id`),
@@ -135,6 +167,7 @@ CREATE TABLE IF NOT EXISTS `fees` (
 -- 10. Audit Trail
 CREATE TABLE IF NOT EXISTS `audit_log` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `school_id` INT NOT NULL,
   `user_id` INT DEFAULT NULL,
   `action` VARCHAR(100) NOT NULL,
   `target_entity` VARCHAR(100) NOT NULL,
@@ -142,6 +175,7 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
   `details` JSON DEFAULT NULL,
   `ip_address` VARCHAR(45) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_audit_school FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`) ON DELETE CASCADE,
   INDEX idx_audit_user (`user_id`),
   INDEX idx_audit_action (`action`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
